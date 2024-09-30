@@ -406,6 +406,7 @@ function Invoke-FabricSQLCommand {
     $Command.CommandTimeout = 0
     $Adapter = New-Object System.Data.SqlClient.SqlDataAdapter($Command)
     $Dataset = New-Object System.Data.DataSet
+    $QueryStartTime = (Get-Date)
     try {
         $Adapter.Fill($Dataset) | Out-Null
     }
@@ -415,11 +416,16 @@ function Invoke-FabricSQLCommand {
     finally {
         $Connection.Close()
     }
+    $QueryEndTime = (Get-Date)
+    $QueryExecutionTime = $QueryEndTime - $QueryStartTime
 
     return @{
-        "Dataset"   = $Dataset
-        "Messages"  = $MessageOutput
-        "Errors"    = $ErrorOutput
+        "Dataset"               = $Dataset
+        "Messages"              = $MessageOutput
+        "Errors"                = $ErrorOutput
+        "QueryStartTime"        = $QueryStartTime
+        "QueryEndTime"          = $QueryEndTime
+        "QueryExecutionTime"    = $QueryExecutionTime
     }
 }
 
