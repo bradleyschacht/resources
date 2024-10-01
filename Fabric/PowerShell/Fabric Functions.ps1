@@ -32,7 +32,7 @@ function Get-FabricAccessToken {
     }
 
     if ($ResourceUrl) {
-        (Get-AzAccessToken -ResourceUrl $ResourceUrl).Token
+        (Get-AzAccessToken -ResourceUrl $ResourceUrl -AsSecureString).Token | ConvertFrom-SecureString -AsPlainText
     }
 
 }
