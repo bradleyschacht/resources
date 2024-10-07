@@ -5,11 +5,11 @@ Clear-Host
     [string]$WorkspaceName
 
     <#*****     Flight Control Database     *****#>
-    [string]$FlightControlServer = 'scbradlsql01.database.windows.net'
-    [string]$FlightControlDatabase = 'FlightControl_vNextNext'
+    [string]$FlightControlServer = 'YourServerName.database.windows.net'
+    [string]$FlightControlDatabase = 'FlightControl'
 
     <#*****     Capacity Metrics     *****#>
-    [string]$CapacityMetricsDatasetID = '287f17e3-a624-4663-9dd8-c4f521edced2'
+    [string]$CapacityMetricsDatasetID = '000-000-0000'
 
     <#*****     Log Storage Location     *****#>
     [string]$BatchLogFolder = "C:\Logging\Batch"
