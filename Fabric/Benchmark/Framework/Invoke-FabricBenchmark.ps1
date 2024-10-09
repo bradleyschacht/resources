@@ -1,20 +1,24 @@
 function Invoke-FabricBenchmark {
     param (
-        <#*****     Scenario Filters     *****#>
+        # Flight Control Database
+        [string]$FlightControlServer,
+        [string]$FlightControlDatabase,    
+    
+        # Scenario Filters
         [string]$WorkspaceName = $null,
         [array]$ScenarioList = @(),
 
-        <#*****     Flight Control Database     *****#>
-        [string]$FlightControlServer,
-        [string]$FlightControlDatabase,
-
-        <#*****     Capacity Metrics     *****#>
+        # Capacity Metrics
         [string]$CapacityMetricsDatasetID = $null,
 
-        <#*****     Log Storage Location     *****#>
-        # [string]$BatchLogFolder = $null,
+        <#
+            Notes for later: Enable the real time write to a log file locally.
+            
+            # Log Storage Location
+            [string]$BatchLogFolder = $null,
+        #>
 
-        <#*****     Runtime Variables     *****#>
+        # Runtime Variables
         [boolean]$GenerateNewScenarios                      = $true,    <#  Default: $true  #>
         [boolean]$CollectQueryInsights                      = $true,    <#  Default: $true  #>
         [boolean]$CollectCapacityMetrics                    = $true,    <#  Default: $true  #>
@@ -28,7 +32,7 @@ function Invoke-FabricBenchmark {
         [int32]$WaitTimeInSecondsAfterCapacityResume        = 60        <#  Default: 1 minute  -> 60  seconds  #>
     )
 
-    <#*****     Job Initialization Script     *****#>
+    # Job Initialization Script
     $JobInitializationScript = {
         # Get the Fabric functions.
         (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Fabric%20Functions.ps1") | Invoke-Expression
