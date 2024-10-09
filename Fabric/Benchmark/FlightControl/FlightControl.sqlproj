@@ -71,8 +71,17 @@
     <Build Include="dbo\Tables\QueryLog.sql" />
     <Build Include="dbo\Tables\Scenario.sql" />
     <Build Include="dbo\Tables\Thread.sql" />
+    <Build Include="dbo\Views\TPC_PowerRun.sql" />
+    <Build Include="dbo\Views\TPC_PowerRun_Combined.sql" />
+    <Build Include="dbo\Views\vwQuery.sql" />
+    <Build Include="dbo\Views\vwQueryDetail.sql" />
+    <Build Include="dbo\Views\vwScenario.sql" />
+    <Build Include="dbo\Views\vwScenarioDetail.sql" />
+    <Build Include="dbo\Views\vwScenarioLog.sql" />
+    <Build Include="reporting\Views\TPC_PowerRun.sql" />
     <Build Include="Scripts\Populate Automation Tables.sql" />
     <Build Include="Security\automation.sql" />
+    <Build Include="Security\reporting.sql" />
   </ItemGroup>
   <Target Name="BeforeBuild">
     <Delete Files="$(BaseIntermediateOutputPath)\project.assets.json" />

@@ -1,6 +1,6 @@
 /*************************************   Notes   *************************************/
 /*
-    Generated on 2024-10-03
+    Generated on 2024-10-07
     This is the TPC-DS 10000 GB (TB_010) scale factor queries modified for Fabric DW T-SQL syntax.
 
     TPC-DS Parameter Substitution (Version 3.2.0)
@@ -111,6 +111,7 @@
          ) y
          group by rollup (channel, i_brand_id,i_class_id,i_category_id)
          order by channel,i_brand_id,i_class_id,i_category_id
+         OPTION (LABEL = 'TPC-DS Query 14')
          ;
         with  cross_items as
          (select i_item_sk ss_item_sk

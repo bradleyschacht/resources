@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS dbo.Scenario
+GO
+
 CREATE TABLE [dbo].[Scenario] (
     [ScenarioID]                INT             IDENTITY (1, 1) NOT NULL,
     [ScenarioName]              NVARCHAR (200)  NULL,
@@ -20,6 +23,8 @@ CREATE TABLE [dbo].[Scenario] (
     [DataStorage]               NVARCHAR (200)  NULL,
     [StartTime]                 DATETIME2 (6)   NULL,
     [EndTime]                   DATETIME2 (6)   NULL,
+    [HasError]                  BIT             NULL,
+    [HasWarning]                BIT             NULL,
     [ScenarioLog]               NVARCHAR (MAX)  NULL,
     [CreateTime]                DATETIME2 (6)   NULL,
     [LastUpdateTime]            DATETIME2 (6)   NULL

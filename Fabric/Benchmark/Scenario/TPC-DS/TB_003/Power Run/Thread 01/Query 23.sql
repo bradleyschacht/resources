@@ -1,6 +1,6 @@
 /*************************************   Notes   *************************************/
 /*
-    Generated on 2024-10-03
+    Generated on 2024-10-07
     This is the TPC-DS 3000 GB (TB_003) scale factor queries modified for Fabric DW T-SQL syntax.
 
     TPC-DS Parameter Substitution (Version 3.2.0)
@@ -59,6 +59,7 @@
                  and ws_sold_date_sk = d_date_sk 
                  and ws_item_sk in (select item_sk from frequent_ss_items)
         and ws_bill_customer_sk in (select c_customer_sk from best_ss_customer)) AS x /* and ws_bill_customer_sk in (select c_customer_sk from best_ss_customer)) */
+        OPTION (LABEL = 'TPC-DS Query 23')
          ;
         with frequent_ss_items as
         (select substring(i_item_desc,1,30) itemdesc,i_item_sk item_sk,d_date solddate,count(*) cnt /* (select substr(i_item_desc,1,30) itemdesc,i_item_sk item_sk,d_date solddate,count(*) cnt */
