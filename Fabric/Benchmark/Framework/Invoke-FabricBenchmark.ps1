@@ -1,7 +1,9 @@
 function Invoke-FabricBenchmark {
     param (
         # Flight Control Database
+        [Parameter(Mandatory=$true)]
         [string]$FlightControlServer,
+        [Parameter(Mandatory=$true)]
         [string]$FlightControlDatabase,    
     
         # Scenario Filters

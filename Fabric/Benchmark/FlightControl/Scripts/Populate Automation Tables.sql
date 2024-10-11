@@ -1,9 +1,10 @@
 TRUNCATE TABLE automation.Scenario
 TRUNCATE TABLE automation.Batch
 
-DECLARE @CapacitySubscriptionID NVARCHAR(200) = ''
-DECLARE @ResouceGroupName NVARCHAR(200) = ''
-DECLARE @CapacityName NVARCHAR(200) = ''
+DECLARE @CapacitySubscriptionID NVARCHAR(200)  = ''
+DECLARE @ResouceGroupName       NVARCHAR(200)  = ''
+DECLARE @CapacityName           NVARCHAR(200)  = ''
+DECLARE @ScenarioRootFolder     NVARCHAR(200)  = 'C:\GitHub\resources\Fabric\Benchmark\Scenario'
 
 DECLARE @ScenarioList TABLE (
 	ScenarioID					NVARCHAR(50),
@@ -59,40 +60,40 @@ INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchma
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCH_WH_GB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'GB_001', 'Import', 0)
 -- TPC-H TB_001
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCH_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_001', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_001', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_001', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCH_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_001', 'Import', 0)
 -- TPC-H TB_003
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCH_WH_TB_003', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_003', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_003', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_003', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_003', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_003', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCH_WH_TB_003', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_003', 'Import', 0)
 -- TPC-H TB_010
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCH_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_010', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_010', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCH_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_010', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCH_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-H', 'TB_010', 'Import', 0)
 
 
 -- TPC-DS GB_001
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCDS_WH_GB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'GB_001', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_GB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'GB_001', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_GB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'GB_001', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCDS_WH_GB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'GB_001', 'Import', 0)
 -- TPC-DS TB_001
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
 -- TPC-DS TB_003
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCDS_WH_TB_001', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_001', 'Import', 0)
 -- TPC-DS TB_010
 INSERT INTO @ScenarioList VALUES (NEWID(), 1.0, 'Load', 					'Fabric Benchmarks 01', 'TPCDS_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_010', 'Import', 0)
-INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_010', 'Import', 1)
+INSERT INTO @ScenarioList VALUES (NEWID(), 2.0, 'Power Run', 				'Fabric Benchmarks 01', 'TPCDS_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_010', 'Import', 0)
 INSERT INTO @ScenarioList VALUES (NEWID(), 3.0, 'Concurrency - 5 Users', 	'Fabric Benchmarks 01', 'TPCDS_WH_TB_010', @CapacitySubscriptionID, @ResouceGroupName, @CapacityName, 'TPC-DS', 'TB_010', 'Import', 0)
 
 
-INSERT INTO @Batch VALUES ('Load', 						1, 'Load', 						1, 'C:\GitHub\resources\Fabric\Benchmark\Scenario\[Dataset]\[DataSize]\[BatchDescription]', 1)
-INSERT INTO @Batch VALUES ('Power Run', 				1, 'Power Run', 				4, 'C:\GitHub\resources\Fabric\Benchmark\Scenario\[Dataset]\[DataSize]\[BatchDescription]', 1)
-INSERT INTO @Batch VALUES ('Concurrency - 5 Users', 	1, 'Power Run', 				1, 'C:\GitHub\resources\Fabric\Benchmark\Scenario\[Dataset]\[DataSize]\[BatchDescription]', 1)
-INSERT INTO @Batch VALUES ('Concurrency - 5 Users', 	2, 'Concurrency - 5 Users', 	1, 'C:\GitHub\resources\Fabric\Benchmark\Scenario\[Dataset]\[DataSize]\[BatchDescription]', 1)
+INSERT INTO @Batch VALUES ('Load', 						1, 'Load', 						1, CONCAT(@ScenarioRootFolder, '\[Dataset]\[DataSize]\[BatchDescription])', 1)
+INSERT INTO @Batch VALUES ('Power Run', 				1, 'Power Run', 				4, CONCAT(@ScenarioRootFolder, '\[Dataset]\[DataSize]\[BatchDescription])', 1)
+INSERT INTO @Batch VALUES ('Concurrency - 5 Users', 	1, 'Power Run', 				1, CONCAT(@ScenarioRootFolder, '\[Dataset]\[DataSize]\[BatchDescription])', 1)
+INSERT INTO @Batch VALUES ('Concurrency - 5 Users', 	2, 'Concurrency - 5 Users', 	1, CONCAT(@ScenarioRootFolder, '\[Dataset]\[DataSize]\[BatchDescription])', 1)
 
 
 INSERT INTO @Capacity VALUES (2, 		'F2', 		1)
