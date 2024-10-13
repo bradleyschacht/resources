@@ -5,3 +5,5 @@ To load this set of functions without forking the repo or downloading any files,
 ``` powershell
 Invoke-Expression $((Invoke-WebRequest "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Fabric Functions.ps1").Content)
 ```
+
+## Get-FabricAccessToken

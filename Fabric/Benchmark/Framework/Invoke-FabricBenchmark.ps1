@@ -11,7 +11,9 @@ function Invoke-FabricBenchmark {
         [array]$ScenarioList = @(),
 
         # Capacity Metrics
-        [string]$CapacityMetricsDatasetID = $null,
+        [string]$CapacityMetricsWorkspace,
+		[string]$CapacityMetricsSemanticModelName = "Fabric Capacity Metrics",
+		[string]$CapacityMetricsSemanticModelId,
 
         <#
             Notes for later: Enable the real time write to a log file locally.
@@ -108,7 +110,9 @@ function Invoke-FabricBenchmark {
     Write-Host ("{0}: {1}" -f "FlightControlDatabase", $FlightControlDatabase)
     Write-Host ""
     Write-Host "***  Capacity Metrics  ***"
-    Write-Host ("{0}: {1}" -f "CapacityMetricsDatasetID", $CapacityMetricsDatasetID)
+    Write-Host ("{0}: {1}" -f "CapacityMetricsWorkspace", $CapacityMetricsWorkspace)
+    Write-Host ("{0}: {1}" -f "CapacityMetricsSemanticModelName", $CapacityMetricsSemanticModelName)
+    Write-Host ("{0}: {1}" -f "CapacityMetricsSemanticModelId", $CapacityMetricsSemanticModelId)
     Write-Host ""
     <#
         Notes for later: If enabling the local log, write this location to the console.
@@ -164,11 +168,18 @@ function Invoke-FabricBenchmark {
     }
 
     # Check to be sure the proper Capacity Metrics parameter combination was passed.
-    if ($true -eq $CollectCapacityMetrics -and ($null -eq $CapacityMetricsDatasetID -or $CapacityMetricsDatasetID -eq "")) {
-
-        Write-Host "No value was provided for the `$CapacityMetricsDatasetID parameter." -ForegroundColor Red
-        Write-Host "When `$CollectCapacityMetrics is set to `$true a value must be provided for the `$CapacityMetricsDatasetID parameter. The benchmark will not be run." -ForegroundColor Red
-        Exit
+    if ($true -eq $CollectCapacityMetrics) {
+        if($CapacityMetricsSemanticModelId -ne "" -and $null -ne $CapacityMetricsSemanticModelId) {
+            # Continue running the script.
+        }
+        elseif (($CapacityMetricsWorkspace -ne "" -and $null -ne $CapacityMetricsWorkspace) -and ($CapacityMetricsSemanticModelName -ne "" -and $null -ne $CapacityMetricsSemanticModelName)) {
+            # Continue running the script.
+        }
+        else {
+            Write-Host "No value was provided for the Capacity Metrics parameters." -ForegroundColor Red
+            Write-Host "When `$CollectCapacityMetrics is set to `$true a value must be provided for the CapacityMetricsSemanticModelID or the CapacityMetricsWorkspace parameter. The benchmark will not be run." -ForegroundColor Red
+            Exit
+        }
     }
 
     # Generate new scenarios.
@@ -1275,7 +1286,7 @@ function Invoke-FabricBenchmark {
                 # If there are distributed statement ids then continue processing.
                 if ($DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount -gt 0) {
                     $Count = $DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount
-                    $List = $DistributedStatementIDList.Dataset.Tables.CapacityMetricsDistributedStatementIDList
+                    $List = $DistributedStatementIDList.Dataset.Tables.QueryInsightsDistributedStatementIDList
 
                     Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("{0} distributed statement ids were found in the query log." -f $Count) -CodeBlock $null
 
@@ -1285,23 +1296,8 @@ function Invoke-FabricBenchmark {
 
                     # Look at capacity metrics gather the usage details.
                     do {
-                        # Check capacity metrics at 3 spots to ensure a record is found in capacity metrics throughout the smoothing period (24 horus).
-                        [array]$FirstSlice     = Get-FabricCapacityMetrics -CapacityMetricsDatasetID $CapacityMetricsDatasetID -CapacityID $CapacityID -DistributedStatementIDList $List -QueryDate ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 15:00:00")
-                        [array]$SecondSlice    = Get-FabricCapacityMetrics -CapacityMetricsDatasetID $CapacityMetricsDatasetID -CapacityID $CapacityID -DistributedStatementIDList $List -QueryDate ([datetime]$BatchStartTime).AddDays(1).ToString("yyyy-MM-dd 03:00:00")
-                        [array]$ThirdSlice     = Get-FabricCapacityMetrics -CapacityMetricsDatasetID $CapacityMetricsDatasetID -CapacityID $CapacityID -DistributedStatementIDList $List -QueryDate ([datetime]$BatchStartTime).AddDays(1).ToString("yyyy-MM-dd 15:00:00")
-
-                        # Combine the three time slices and remove any duplicates as the same query can show up in multiple time slices over the smoothnig period (24 hours).
-                        $CapacityMetrics = @()
-                        ($FirstSlice + $SecondSlice + $ThirdSlice | Sort-Object OperationID | Get-Unique -AsString) | Group-Object WorkspaceName, ItemKind, ItemName, OperationId |
-                        ForEach-Object {
-                            $GroupByColumns = $_.name -split ', ';
-                            $StartTime = ($_.group | Measure-Object -Property OperationStartTime -Minimum).Minimum;
-                            $EndTime = ($_.group | Measure-Object -Property OperationEndTime -Maximum).Maximum;
-                            $SumCUs = ($_.group | Measure-Object -Property Sum_CUs -Sum).Sum;
-                            $SumDuration = ($_.group | Measure-Object -Property Sum_Duration -Sum).Sum;
-                            $CapacityMetrics += [PScustomobject]@{WorkspaceName = $GroupByColumns[0]; ItemKind = $GroupByColumns[1]; ItemName = $GroupByColumns[2]; OperationID = $GroupByColumns[3]; StartTime = $StartTime; EndTime = $EndTime; SumCUs = $SumCUs; SumDuration = $SumDuration}
-                        }
-
+                        $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -Capacity $CapacityID -OperationIdList $OperationIdList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00")
+                        
                         Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $Count, $CapacityMetrics.Count) -CodeBlock $null
 
                         # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
