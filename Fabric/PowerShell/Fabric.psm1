@@ -1,3 +1,4 @@
+<#
 $PathToScript = if ($PSScriptRoot) { 
     # Console or vscode debug/run button/F5 temp console
     $PSScriptRoot 
@@ -23,10 +24,8 @@ foreach($Module in (Get-ChildItem -Path .\Functions | Where-Object {$_.Extension
     . $Module.FullName
     Export-ModuleMember -Function $Module.BaseName
 }
+#>
 
-
-
-<#
 
 $FunctionList = @{
     "Find-FabricSQLMessage"         = "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Functions/Find-FabricSQLMessage.ps1"
@@ -55,5 +54,3 @@ foreach($Key in $FunctionList.Keys) {
     
     Export-ModuleMember -Function $Key
 }
-
-#>
