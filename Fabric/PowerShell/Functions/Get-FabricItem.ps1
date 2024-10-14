@@ -15,9 +15,6 @@ function Get-FabricItem {
     $Uri      = "https://api.fabric.microsoft.com/v1/workspaces/{0}/items" -f $WorkspaceID
     $ItemList = (Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken).value
 
-    #$Headers    = @{'Authorization' = ('Bearer {0}' -f $AccessToken); 'Content-Type' = 'application/json'}
-    #$ItemList   = (Invoke-RestMethod -Method GET -Uri $Uri -Headers $Headers -ConnectionTimeoutSeconds 120 -OperationTimeoutSeconds 120).value
-
     # Check if an item or item type were provided.
     if($Item -or $ItemType) {
         
