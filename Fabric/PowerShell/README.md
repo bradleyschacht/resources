@@ -73,3 +73,5 @@ Get-FabricCUPricePerHour -Region "eastus"
 # Provide a capacity name or id and the script will look for the region where the capacity is deployed and return the CU Price Per Hour for that region.
 Get-FabricCUPricePerHour -Capacity "mycapacity01"
 ```
+
+### More functions to be added.
