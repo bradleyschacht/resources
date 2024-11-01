@@ -27,7 +27,7 @@ Clear-Host
 
 <#
     # Alternatively, use the following code to load the script directly from GitHub.
-    (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/Benchmark/Framework/Inovke-FabricBenchmark.ps1") | Invoke-Expression
+    (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/Benchmark/Framework/Invoke-FabricBenchmark.ps1") | Invoke-Expression
 
 #>
 
@@ -42,7 +42,8 @@ $BenchmarParameters = @{
     ScenarioList    = @("")
 
     # Capacity Metrics
-    CapacityMetricsDatasetID = ""
+    CapacityMetricsWorkspace = ""
+	CapacityMetricsSemanticModelName = "Fabric Capacity Metrics"
 
     # Runtime Variables
     GenerateNewScenarios                        = $true    <#  Default: $true  #>
