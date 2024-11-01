@@ -12,8 +12,8 @@ function Invoke-FabricBenchmark {
 
         # Capacity Metrics
         [string]$CapacityMetricsWorkspace,
-		[string]$CapacityMetricsSemanticModelName = "Fabric Capacity Metrics",
-		[string]$CapacityMetricsSemanticModelId,
+	[string]$CapacityMetricsSemanticModelName = "Fabric Capacity Metrics",
+	[string]$CapacityMetricsSemanticModelId,
 
         <#
             Notes for later: Enable the real time write to a log file locally.
