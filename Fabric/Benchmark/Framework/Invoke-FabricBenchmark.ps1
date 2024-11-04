@@ -324,7 +324,7 @@ function Invoke-FabricBenchmark {
                 CapacitySubscriptionID,
                 CapacityResourceGroupName,
                 CapacityName,
-                CapacitySize
+                CapacitySize,
 
                 -- Fields to look up if they aren't populated already. --
                 WorkspaceID,
@@ -333,7 +333,7 @@ function Invoke-FabricBenchmark {
                 Server,
                 CapacityCUPricePerHour,
                 CapacityRegion,
-                CapacityID,
+                CapacityID
             FROM dbo.Scenario
             WHERE
                 StartTime IS NULL
@@ -374,6 +374,7 @@ function Invoke-FabricBenchmark {
                 WHERE
                     ScenarioID = {0}
             " -f $ScenarioID
+
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Scenario {0} has started." -f $ScenarioID) -CodeBlock $null
             $null = Invoke-FabricSQLCommand -Server $FlightControlServer -Database $FlightControlDatabase -Query $Query
             
@@ -385,9 +386,9 @@ function Invoke-FabricBenchmark {
             $CapacitySize                   = $Scenario.CapacitySize
             $ItemName                       = $Scenario.ItemName
             $Database                       = $Scenario.ItemName
-            
+
             # Get the workspace id.
-            if ($Scenario.WorkspaceID -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.WorkspaceID)) {
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Calling API to gather workspace id.") -CodeBlock $null
                 $WorkspaceID = (Get-FabricWorkspace -Workspace $WorkspaceName).id
             }
@@ -396,7 +397,7 @@ function Invoke-FabricBenchmark {
             }
 
             # Get the capacity id.
-            if ($Scenario.CapacityID -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.CapacityID)) {
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Calling API to capacity id.") -CodeBlock $null
                 $CapacityID = (Get-FabricCapacity -Location "Fabric" -Capacity $Scenario.CapacityName).id
             }
@@ -405,7 +406,7 @@ function Invoke-FabricBenchmark {
             }
 
             # Get the capacity region.
-            if ($Scenario.CapacityRegion -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.CapacityRegion)) {
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Calling API to get capacity region.") -CodeBlock $null
                 $CapacityRegion = (Get-FabricCapacity -Location "Azure" -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName).location
             }
@@ -414,15 +415,15 @@ function Invoke-FabricBenchmark {
             }
             
             # Get the CU price per hour for the capacity's region.
-            if ($Scenario.CapacityCUPricePerHour -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.CapacityCUPricePerHour)) {
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Calling API to get capacity CU price per hour.") -CodeBlock $null
-                $CapacityCUPricePerHour = Get-FabricCUPricePerHour -Region $CapacityRegion
+                $CapacityCUPricePerHour = (Get-FabricCUPricePerHour -Region $CapacityRegion).Items.retailPrice
             }
             else {
                 $CapacityCUPricePerHour = $Scenario.CapacityCUPricePerHour
             }
             
-            if ($Scenario.ItemID -eq "" -or $Scenario.ItemType -eq "" -or $Scenario.Server -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.ItemID) -or [string]::IsNullOrEmpty($Scenario.ItemType) -or [string]::IsNullOrEmpty($Scenario.Server)) {
                 # Determine if the item is a lakehouse or a warehouse, then gather the SQL connection string information.
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Calling API to get lakehouse information.") -CodeBlock $null
                 $Lakehouse = Get-FabricLakehouse -Workspace $WorkspaceID -Lakehouse $ItemName
@@ -449,7 +450,7 @@ function Invoke-FabricBenchmark {
             }
 
             # Update the scenario record with the information gathered from the API calls if any of the fields were blank.
-            if ($Scenario.WorkspaceID -eq "" -or $Scenario.ItemID -eq "" -or $Scenario.ItemType -eq "" -or $Scenario.Server -eq "" -or $Scenario.CapacityCUPricePerHour -eq "" -or $Scenario.CapacityRegion -eq "" -or $Scenario.CapacityID -eq "") {
+            if ([string]::IsNullOrEmpty($Scenario.WorkspaceID) -or [string]::IsNullOrEmpty($Scenario.ItemID) -or [string]::IsNullOrEmpty($Scenario.ItemType) -or [string]::IsNullOrEmpty($Scenario.Server) -or [string]::IsNullOrEmpty($Scenario.CapacityCUPricePerHour) -or [string]::IsNullOrEmpty($Scenario.CapacityRegion) -or [string]::IsNullOrEmpty($Scenario.CapacityID)) {
                 $Query = "
                     UPDATE dbo.Scenario
                     SET
@@ -469,21 +470,20 @@ function Invoke-FabricBenchmark {
 
             # If any variables are still empty or $null then don't run the scenario.
             if (
-                $null -eq $WorkspaceName -or $WorkspaceName.trim() -eq "" -or
-                $null -eq $WorkspaceID -or $WorkspaceID.trim() -eq "" -or
-                $null -eq $ItemID -or $ItemID.trim() -eq "" -or
-                $null -eq $ItemName -or $ItemName.trim() -eq "" -or
-                $null -eq $ItemType -or $ItemType.trim() -eq "" -or
-                $null -eq $Server -or $Server.trim() -eq "" -or
-                $null -eq $Database -or $Database.trim() -eq "" -or
-                $null -eq $CapacitySubscriptionID -or $CapacitySubscriptionID.trim() -eq "" -or
-                $null -eq $CapacityResourceGroupName -or $CapacityResourceGroupName.trim() -eq "" -or
-                $null -eq $CapacityName -or $CapacityName.trim() -eq "" -or
-                $null -eq $CapacitySize -or $CapacitySize.trim() -eq "" -or
-                $null -eq $CapacityRegion -or $CapacityRegion.trim() -eq "" -or
-                $null -eq $CapacityCUPricePerHour -or $CapacityCUPricePerHour.trim() -eq "" -or
-                $null -eq $CapacityID -or $CapacityID.trim() -eq "" -or
-                $null -eq $ThreadCount -or $ThreadCount.trim() -eq ""
+                [string]::IsNullOrEmpty($WorkspaceName) -or `
+                [string]::IsNullOrEmpty($WorkspaceID) -or `
+                [string]::IsNullOrEmpty($ItemID) -or `
+                [string]::IsNullOrEmpty($ItemName) -or `
+                [string]::IsNullOrEmpty($ItemType) -or `
+                [string]::IsNullOrEmpty($Server) -or `
+                [string]::IsNullOrEmpty($Database) -or `
+                [string]::IsNullOrEmpty($CapacitySubscriptionID) -or `
+                [string]::IsNullOrEmpty($CapacityResourceGroupName) -or `
+                [string]::IsNullOrEmpty($CapacityName) -or `
+                [string]::IsNullOrEmpty($CapacitySize) -or `
+                [string]::IsNullOrEmpty($CapacityRegion) -or `
+                [string]::IsNullOrEmpty($CapacityCUPricePerHour) -or `
+                [string]::IsNullOrEmpty($CapacityID)
             ) {
                 $RunScenario = $false
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Error" -MessageText ("At least one scenario lookup value was not found. The scenario will be terminated.") -CodeBlock $null
@@ -491,7 +491,7 @@ function Invoke-FabricBenchmark {
             else {
                 # Do nothing, $RunScenario is already set to $true.
             }
-            
+
             # Write the parameters to the console and the log.
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Workspace: {0}" -f $WorkspaceName) -CodeBlock $null
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("WorkspaceID: {0}" -f $WorkspaceID) -CodeBlock $null
@@ -507,7 +507,6 @@ function Invoke-FabricBenchmark {
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("CapacityRegion: {0}" -f $CapacityRegion) -CodeBlock $null
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("CapacityCUPricePerHour: {0}" -f $CapacityCUPricePerHour) -CodeBlock $null
             Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("CapacityID: {0}" -f $CapacityID) -CodeBlock $null
-            Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("ThreadCount: {0}" -f $ThreadCount) -CodeBlock $null
             
             # Perform the necessary capacity related functions (Assign, scale, and resume) then check to be sure the SQL endpoint is accessible. 
             if ($true -eq $RunScenario) {
