@@ -43,7 +43,7 @@ $BenchmarParameters = @{
 
     # Capacity Metrics
     CapacityMetricsWorkspace = ""
-	CapacityMetricsSemanticModelName = "Fabric Capacity Metrics"
+    CapacityMetricsSemanticModelName = "Fabric Capacity Metrics"
 
     # Runtime Variables
     GenerateNewScenarios                        = $true    <#  Default: $true  #>
