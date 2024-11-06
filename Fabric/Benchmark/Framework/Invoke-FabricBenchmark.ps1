@@ -12,8 +12,8 @@ function Invoke-FabricBenchmark {
 
         # Capacity Metrics
         [string]$CapacityMetricsWorkspace,
-	[string]$CapacityMetricsSemanticModelName = "Fabric Capacity Metrics",
-	[string]$CapacityMetricsSemanticModelId,
+        [string]$CapacityMetricsSemanticModelName = "Fabric Capacity Metrics",
+        [string]$CapacityMetricsSemanticModelId,
 
         <#
             Notes for later: Enable the real time write to a log file locally.
@@ -1171,86 +1171,88 @@ function Invoke-FabricBenchmark {
                 Write-Host "No batches to process."
             }
 
-            # Update the query log with the details from query insights. 
-            if ($true -eq $CollectQueryInsights -and $true -eq $RunScenario) {        
-                # Run the command to get the list of distributed statement ids that need to have additional metrics collected from query insights.
+            if (($true -eq $CollectQueryInsights -or $true -eq $CollectCapacityMetrics) -and $true -eq $RunScenario) {
+                # Run the command to get the list of distributed statement ids that need to have additional metrics collected from query insights or capacity metrics.
                 $Query = "
-                    SELECT
-                        '''' + STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), ''', ''') + '''' AS QueryInsightsDistributedStatementIDList,
-                        '\""' + STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), '\"", \""') + '\""' AS CapacityMetricsDistributedStatementIDList,
-                        COUNT(*) AS DistributedStatementIDCount
-                    FROM dbo.QueryLog AS q
-                    INNER JOIN dbo.Batch AS b
-                        ON q.BatchID = b.BatchID
-                    INNER JOIN dbo.Scenario AS s
-                        ON b.ScenarioID = s.ScenarioID
-                    WHERE
-                        s.ScenarioID = {0}
+                SELECT
+                    '''' + STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), ''', ''') + '''' AS QueryInsightsDistributedStatementIDList,
+                    STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), ',') AS CapacityMetricsDistributedStatementIDList,
+                    COUNT(*) AS DistributedStatementIDCount
+                FROM dbo.QueryLog AS q
+                INNER JOIN dbo.Batch AS b
+                    ON q.BatchID = b.BatchID
+                INNER JOIN dbo.Scenario AS s
+                    ON b.ScenarioID = s.ScenarioID
+                WHERE
+                    s.ScenarioID = {0}
                 " -f $ScenarioID
-                Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from query insights.") -CodeBlock $null
+                Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from the query log.") -CodeBlock $null
                 $DistributedStatementIDList = Invoke-FabricSQLCommand -Server $FlightControlServer -Database $FlightControlDatabase -Query $Query
 
-                # If there are distributed statement ids then continue processing.
                 if ($DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount -gt 0) {
-                    $Count = $DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount
-                    $List = $DistributedStatementIDList.Dataset.Tables.QueryInsightsDistributedStatementIDList
+                    $DistributedStatementIDCount = $DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount
+                    $QueryInsightsDistributedStatementIDList = $DistributedStatementIDList.Dataset.Tables.QueryInsightsDistributedStatementIDList
+                    $CapacityMetricsDistributedStatementIDList = $DistributedStatementIDList.Dataset.Tables.CapacityMetricsDistributedStatementIDList.Split(",")
 
-                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("{0} distributed statement ids were found in the query log." -f $Count) -CodeBlock $null
-
-                    # Wait for the queries to show up in query insights or for X minutes. Whichever condition is hit first will break the loop.
-                    $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForQueryInsightsData)
-                    $ContinueLoop = $true
-
-                    # Look at query insights on the database where the batch ran to gather additional metrics.
-                    do {
-                        # Continue to look in query insights until all the queries are found.
-                        $Query = "
-                            WITH QueryInsights AS (
-                                SELECT
-                                    UPPER(distributed_statement_id) AS DistributedStatementID,
-                                    session_id AS QueryInsightsSessionID,
-                                    login_name AS QueryInsightsLoginName,
-                                    CONVERT(NVARCHAR, submit_time, 21) AS QueryInsightsSubmitTime,
-                                    CONVERT(NVARCHAR, start_time, 21) AS QueryInsightsStartTime,
-                                    CONVERT(NVARCHAR, end_time, 21) AS QueryInsightsEndTime,
-                                    total_elapsed_time_ms AS QueryInsightsDurationInMS,
-                                    row_count AS QueryInsightsRowCount,
-                                    [status] AS QueryInsightsStatus,
-                                    result_cache_hit AS QueryInsightsResultCacheHit,
-                                    NULLIF([label], '') AS QueryInsightsLabel,
-                                    command AS QueryInsightsQueryText
-                                FROM queryinsights.exec_requests_history	
-                            )
-                                
-                            SELECT
-                                CONCAT(CONVERT(NVARCHAR(MAX), 'UPDATE dbo.QueryLog SET QueryInsightsSessionID = '), QueryInsightsSessionID, ', QueryInsightsLoginName = ''', QueryInsightsLoginName, ''', QueryInsightsSubmitTime = ''', QueryInsightsSubmitTime, ''', QueryInsightsStartTime = ''', QueryInsightsStartTime, ''', QueryInsightsEndTime = ''', QueryInsightsEndTime, ''', QueryInsightsDurationInMS = ', QueryInsightsDurationInMS, ', QueryInsightsRowCount = ', QueryInsightsRowCount, ', QueryInsightsStatus = ''', QueryInsightsStatus, ''', QueryInsightsResultCacheHit = ', QueryInsightsResultCacheHit, ', QueryInsightsLabel = ''', QueryInsightsLabel, ''', QueryInsightsQueryText = ''', QueryInsightsQueryText,' '', LastUpdateTime = GETDATE() WHERE ScenarioID = {0} AND DistributedStatementID = ''', DistributedStatementID, ''';') AS UpdateQueryLogText
-                            FROM QueryInsights
-                            WHERE DistributedStatementID IN ({1})
-                        " -f $ScenarioID, $List
-                        $QueryInsightsList = Invoke-FabricSQLCommand -Server $Server -Database $Database -Query $Query
-                        
-                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in query insights is {0} and the current number is {1}." -f $Count, $QueryInsightsList.Dataset.Tables.Rows.Count) -CodeBlock $null
-                        
-                        # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
-                        if (($QueryInsightsList.Dataset.Tables.Rows.Count -ne $Count) -and ((Get-Date) -lt $WaitForJobsUntil)) {
-                            Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking query insights again.") -CodeBlock $null
-                            Start-Sleep 60
-                        }
-                    
-                        # If the time limit has expired, stop checking for new queries.
-                        if ((Get-Date) -gt $WaitForJobsUntil) {
-                            Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in query insghts. Therefore, columns in the query log that contain query insights metrics may be incomplete." -f $WaitTimeInMinutesForQueryInsightsData) -CodeBlock $null
-                            $ContinueLoop = $false
-                        }
-                    } while (
-                        ($QueryInsightsList.Dataset.Tables.Rows.Count -ne $Count) -and ($true -eq $ContinueLoop)
-                    )
+                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("{0} distributed statement ids were found in the query log." -f $DistributedStatementIDCount) -CodeBlock $null
                 }
                 else {
-                    $Count = 0
-                    $List = ""
                     Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("No distributed statement ids were found in the query log.") -CodeBlock $null
                 }
+            }
+
+            # Update the query log with the details from query insights. 
+            if ($true -eq $CollectQueryInsights -and $true -eq $RunScenario -and $DistributedStatementIDCount -gt 0) {
+                Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from query insights.") -CodeBlock $null
+
+                # Wait for the queries to show up in query insights or for X minutes. Whichever condition is hit first will break the loop.
+                $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForQueryInsightsData)
+                $ContinueLoop = $true
+
+                # Look at query insights on the database where the batch ran to gather additional metrics.
+                do {
+                    # Continue to look in query insights until all the queries are found.
+                    $Query = "
+                        WITH QueryInsights AS (
+                            SELECT
+                                UPPER(distributed_statement_id) AS DistributedStatementID,
+                                session_id AS QueryInsightsSessionID,
+                                login_name AS QueryInsightsLoginName,
+                                CONVERT(NVARCHAR, submit_time, 21) AS QueryInsightsSubmitTime,
+                                CONVERT(NVARCHAR, start_time, 21) AS QueryInsightsStartTime,
+                                CONVERT(NVARCHAR, end_time, 21) AS QueryInsightsEndTime,
+                                total_elapsed_time_ms AS QueryInsightsDurationInMS,
+                                row_count AS QueryInsightsRowCount,
+                                [status] AS QueryInsightsStatus,
+                                result_cache_hit AS QueryInsightsResultCacheHit,
+                                NULLIF([label], '') AS QueryInsightsLabel,
+                                command AS QueryInsightsQueryText
+                            FROM queryinsights.exec_requests_history	
+                        )
+                            
+                        SELECT
+                            CONCAT(CONVERT(NVARCHAR(MAX), 'UPDATE dbo.QueryLog SET QueryInsightsSessionID = '), QueryInsightsSessionID, ', QueryInsightsLoginName = ''', QueryInsightsLoginName, ''', QueryInsightsSubmitTime = ''', QueryInsightsSubmitTime, ''', QueryInsightsStartTime = ''', QueryInsightsStartTime, ''', QueryInsightsEndTime = ''', QueryInsightsEndTime, ''', QueryInsightsDurationInMS = ', QueryInsightsDurationInMS, ', QueryInsightsRowCount = ', QueryInsightsRowCount, ', QueryInsightsStatus = ''', QueryInsightsStatus, ''', QueryInsightsResultCacheHit = ', QueryInsightsResultCacheHit, ', QueryInsightsLabel = ''', QueryInsightsLabel, ''', QueryInsightsQueryText = ''', QueryInsightsQueryText,' '', LastUpdateTime = GETDATE() WHERE ScenarioID = {0} AND DistributedStatementID = ''', DistributedStatementID, ''';') AS UpdateQueryLogText
+                        FROM QueryInsights
+                        WHERE DistributedStatementID IN ({1})
+                    " -f $ScenarioID, $QueryInsightsDistributedStatementIDList
+                    $QueryInsightsList = Invoke-FabricSQLCommand -Server $Server -Database $Database -Query $Query
+                    
+                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in query insights is {0} and the current number is {1}." -f $DistributedStatementIDCount, $QueryInsightsList.Dataset.Tables.Rows.Count) -CodeBlock $null
+                    
+                    # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
+                    if (($QueryInsightsList.Dataset.Tables.Rows.Count -ne $DistributedStatementIDCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
+                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking query insights again.") -CodeBlock $null
+                        Start-Sleep 60
+                    }
+                
+                    # If the time limit has expired, stop checking for new queries.
+                    if ((Get-Date) -gt $WaitForJobsUntil) {
+                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in query insghts. Therefore, columns in the query log that contain query insights metrics may be incomplete." -f $WaitTimeInMinutesForQueryInsightsData) -CodeBlock $null
+                        $ContinueLoop = $false
+                    }
+                } while (
+                    ($QueryInsightsList.Dataset.Tables.Rows.Count -ne $DistributedStatementIDCount) -and ($true -eq $ContinueLoop)
+                )
                 
                 # Convert the query insights results to a string and write the results to the query log.
                 if ($QueryInsightsList.Dataset.Tables.Rows.Count -gt 0) {
@@ -1262,64 +1264,34 @@ function Invoke-FabricBenchmark {
             }
 
             # Update the query log with the details from capacity metrics. 
-            if ($true -eq $CollectCapacityMetrics -and $true -eq $RunScenario) {
+            if ($true -eq $CollectCapacityMetrics -and $true -eq $RunScenario -and $DistributedStatementIDCount -gt 0) {
                 Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Gathering CU usage from capacity metrics.") -CodeBlock $null
-                
-                # Run the command to get the list of distributed statement ids that need to have additional metrics collected from capacity metrics.
-                $Query = "
-                    SELECT
-                        '''' + STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), ''', ''') + '''' AS QueryInsightsDistributedStatementIDList,
-                        '\""' + STRING_AGG(UPPER(CONVERT(NVARCHAR(MAX), q.DistributedStatementID)), '\"", \""') + '\""' AS CapacityMetricsDistributedStatementIDList,
-                        COUNT(*) AS DistributedStatementIDCount
-                    FROM dbo.QueryLog AS q
-                    INNER JOIN dbo.Batch AS b
-                        ON q.BatchID = b.BatchID
-                    INNER JOIN dbo.Scenario AS s
-                        ON b.ScenarioID = s.ScenarioID
-                    WHERE
-                        s.ScenarioID = {0}
-                " -f $ScenarioID
-                Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from the query log.") -CodeBlock $null
-                $DistributedStatementIDList = Invoke-FabricSQLCommand -Server $FlightControlServer -Database $FlightControlDatabase -Query $Query
 
-                # If there are distributed statement ids then continue processing.
-                if ($DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount -gt 0) {
-                    $Count = $DistributedStatementIDList.Dataset.Tables.DistributedStatementIDCount
-                    $List = $DistributedStatementIDList.Dataset.Tables.QueryInsightsDistributedStatementIDList
+                # Wait for the queries to show up in capacity metrics or for X minutes. Whichever condition is hit first will break the loop.
+                $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForCapacityMetricsData)
+                $ContinueLoop = $true
 
-                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("{0} distributed statement ids were found in the query log." -f $Count) -CodeBlock $null
+                # Look at capacity metrics gather the usage details.
+                do {
+                    $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -CapacityMetricsSemanticModelId $CapacityMetricsSemanticModelId -Capacity $CapacityID -OperationIdList $CapacityMetricsDistributedStatementIDList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00")
+                    
+                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementIDCount, $CapacityMetrics.Count) -CodeBlock $null
 
-                    # Wait for the queries to show up in capacity metrics or for X minutes. Whichever condition is hit first will break the loop.
-                    $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForCapacityMetricsData)
-                    $ContinueLoop = $true
-
-                    # Look at capacity metrics gather the usage details.
-                    do {
-                        $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -Capacity $CapacityID -OperationIdList $OperationIdList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00")
-                        
-                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $Count, $CapacityMetrics.Count) -CodeBlock $null
-
-                        # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
-                        if (($CapacityMetrics.Count -ne $Count) -and ((Get-Date) -lt $WaitForJobsUntil)) {
-                            Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking capacity metrics again.") -CodeBlock $null
-                            Start-Sleep 60
-                        }
-
-                        # If the time limit has expired, stop checking for new queries.
-                        if ((Get-Date) -gt $WaitForJobsUntil) {
-                            Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, columns in the query log that contain capacity metrics may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData) -CodeBlock $null
-                            $ContinueLoop = $false
-                        }
+                    # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
+                    if (($CapacityMetrics.Count -ne $DistributedStatementIDCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
+                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking capacity metrics again.") -CodeBlock $null
+                        Start-Sleep 60
                     }
-                    while (
-                        ($CapacityMetrics.Count -ne $Count) -and ($true -eq $ContinueLoop)
-                    )
+
+                    # If the time limit has expired, stop checking for new queries.
+                    if ((Get-Date) -gt $WaitForJobsUntil) {
+                        Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, columns in the query log that contain capacity metrics may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData) -CodeBlock $null
+                        $ContinueLoop = $false
+                    }
                 }
-                else {
-                    $Count = 0
-                    $List = ""
-                    Add-LogEntry -ScenarioID $ScenarioID -BatchID $null -ThreadID $null -IterationID $null -MessageType "Information" -MessageText ("No distributed statement ids were found in the query log.") -CodeBlock $null
-                }
+                while (
+                    ($CapacityMetrics.Count -ne $DistributedStatementIDCount) -and ($true -eq $ContinueLoop)
+                )
                 
                 # Convert the capacity metrics results to a string and write the results to the query log.
                 if ($CapacityMetrics.Count -gt 0) {
