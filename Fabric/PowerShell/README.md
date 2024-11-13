@@ -57,7 +57,7 @@ Get-FabricCapacityMetrics -CapacityMetricsWorkspace "Fabric Capacity Metrics" -C
 ```
 
 ```powershell
-# By providing the workspace and semantic model name for Capacity Metrics, the script will lookup the semantic model id. For the workspace, provide either the workspace name/id or the capacity name/id to which the workspace is associated. 
+# By providing the semantic model id for Capacity Metrics. For the workspace, provide either the workspace name/id or the capacity name/id to which the workspace is associated. 
 $OperationIdList = @("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE", "12345678-1234-1234-1234-123456789012")
 
 Get-FabricCapacityMetrics -CapacityMetricsSemanticModelId "12345678-1234-1234-1234-123456789012" -Capacity "12345678-1234-1234-1234-123456789012" -OperationIdList $OperationIdList -Date "2000-01-01"
