@@ -29,13 +29,13 @@ function Invoke-FabricRestMethod {
             
             Start-Sleep -Seconds $RetryAfter
         } else {
-            throw $_
+            throw $_.Exception.Response
         }
     }
 
     if ($Response.StatusCode -eq 200) {
         if ($Response.Content) {
-            $response.Content | ConvertFrom-Json
+            $Response.Content | ConvertFrom-Json
         }
     }
     else {

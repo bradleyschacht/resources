@@ -1,0 +1,657 @@
+function Invoke-FabricBenchmark {
+    param (
+        # Scenario Details
+        [Parameter(Mandatory=$true)] [string]$Scenario,
+        [Parameter(Mandatory=$true)] [string]$WorkspaceName,
+        [Parameter(Mandatory=$true)] [string]$ItemName,
+        [Parameter(Mandatory=$true)] [string]$CapacitySubscriptionID,
+        [Parameter(Mandatory=$true)] [string]$CapacityResourceGroupName,
+        [Parameter(Mandatory=$true)] [string]$CapacityName,
+        [Parameter(Mandatory=$true)] [string]$CapacitySize,
+        [Parameter(Mandatory=$true)] [string]$Dataset,
+        [Parameter(Mandatory=$true)] [string]$DataSize,
+        [Parameter(Mandatory=$true)] [int32]$ThreadCount,
+        [Parameter(Mandatory=$true)] [int32]$IterationCount,
+        [Parameter(Mandatory=$true)] [string]$QueryDirectory,
+        [Parameter(Mandatory=$true)] [string]$OutputDirectory,
+
+        # Capacity Metrics
+        [Parameter(Mandatory=$false)] [string]$CapacityMetricsWorkspace,
+        [Parameter(Mandatory=$false)] [string]$CapacityMetricsSemanticModelName,
+
+        # Runtime Variables
+        [Parameter(Mandatory=$false)] [boolean]$CollectQueryInsights                      = $true,    <#  Default: $true  #>
+        [Parameter(Mandatory=$false)] [boolean]$CollectCapacityMetrics                    = $true,    <#  Default: $true  #>
+        [Parameter(Mandatory=$false)] [boolean]$PauseOnCapacitySkuChange                  = $false,   <#  Default: $false  #>
+        [Parameter(Mandatory=$false)] [int32]$BatchTimeoutInMinutes                       = 120,      <#  Default: 120 minutes  #>
+        [Parameter(Mandatory=$false)] [int32]$QueryRetryLimit                             = 1,        <#  Default: 1 -> The query will not retry on failure.  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesForQueryInsightsData       = 15,       <#  Default: 15  minutes  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesForCapacityMetricsData     = 15,       <#  Default: 15  minutes  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInSecondsAfterCapacitySkuChange     = 300,      <#  Default: 5 minutes -> 300 seconds  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInSecondsAfterCapacityResume        = 60        <#  Default: 1 minute  -> 60  seconds  #>
+    )
+
+    # Job Initialization Script
+    $JobInitializationScript = {
+        # Get the Fabric functions.
+        Invoke-Expression (Get-Content -Path "C:\GitHub\resources\Fabric\PowerShell\Load Fabric Functions - Local.ps1" -Raw)
+        #(Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Load%20Fabric%20Functions.ps1") | Invoke-Expression
+
+        function Add-LogEntry {
+            param (
+                $ScenarioID,    
+                $BatchID,
+                $ThreadID,
+                $IterationID,
+                $QueryID = $null,
+                $MessageType,
+                $MessageText,
+                $CodeBlock
+            )
+
+            # Generate a key for the log record.
+            $LogKey = (New-Guid).ToString()
+            $MessageTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss.ffff")
+            
+            # Build the message hashtable.
+            $Message = @{
+                "Thread"          = $Thread
+                "Iteration"       = $Iteration
+                "Query"           = $Query
+                "MessageType"     = $MessageType
+                "MessageTime"     = $MessageTime
+                "MessageText"     = $MessageText
+                "CodeBlock"       = $CodeBlock
+            }
+
+            # Get the list of empty keys.
+            $EmptyKeys = $Message.Keys | Where-Object { $null -eq $Message[$_]}
+
+            # Remove the empty keys from the hashtable.
+            foreach ($Key in $EmptyKeys) {
+                $Message.Remove($Key)
+            }
+
+            # Add the message to the log or update existing records.
+            $LocalLog[$LogKey] = $Message
+
+            # Write the message to the console.
+            if($MessageType -in ("Error", "Warning")) {
+                Write-Host ("{0} | {1} | Thread {2} | Iteration {3} | Query {4} | {5} | {6}" -f $MessageTime, $MessageType, $Thread, $Iteration, $Query, $MessageText, $CodeBlock) -ForegroundColor Red
+            }
+            else {
+                Write-Host ("{0} | {1} | Thread {2} | Iteration {3} | Query {4} | {5} | {6}" -f $MessageTime, $MessageType, $Thread, $Iteration, $Query, $MessageText, $CodeBlock)
+            }
+
+            <#
+                Notes for later: Enable the real time write to a log file locally.
+                
+                # Write the message to the log.
+                Write-Output ($Message | ConvertTo-JSON | Out-String) | Out-File $LogFilePath -Append
+            #>
+        }
+    }
+
+    # Load all the functions.
+    Invoke-Expression ($JobInitializationScript | Out-String)
+
+    Start-Sleep -Seconds 90
+
+    # Check to be sure the proper Capacity Metrics parameter combination was passed.
+    if ($true -eq $CollectCapacityMetrics) {
+        if (($CapacityMetricsWorkspace -ne "" -and $null -ne $CapacityMetricsWorkspace) -and ($CapacityMetricsSemanticModelName -ne "" -and $null -ne $CapacityMetricsSemanticModelName)) {
+            # Continue running the script.
+        }
+        else {
+            Write-Host "No value was provided for the Capacity Metrics parameters." -ForegroundColor Red
+            Write-Host "When `$CollectCapacityMetrics is set to `$true a value must be provided for the CapacityMetricsWorkspace and CapacityMetricsSemanticModelName parameters. The benchmark will not be run." -ForegroundColor Red
+            Exit
+        }
+    }
+
+    # Create the synchronized hashtable to store the log and thread status.
+    $Log = [Hashtable]::Synchronized(@{})
+    $ThreadStatus = [Hashtable]::Synchronized(@{})
+    $QueryLog = [Hashtable]::Synchronized(@{})
+    $QueryResults = [Hashtable]::Synchronized(@{})
+
+    $Log.Clear()
+
+    # Create the local log variable reference.
+    $LocalLog = $Log
+
+    $ScenarioStartTime = Get-Date
+
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Scenario {0} has started." -f $Scenario) -CodeBlock $null
+    
+    # Call the various Fabric APIs to gather information about the environment. 
+    $WorkspaceName                  = $WorkspaceName
+    $CapacitySubscriptionID         = $CapacitySubscriptionID
+    $CapacityResourceGroupName      = $CapacityResourceGroupName
+    $CapacityName                   = $CapacityName
+    $CapacitySize                   = $CapacitySize
+    $ItemName                       = $ItemName
+
+    # Get the workspace id.
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to gather workspace id.") -CodeBlock $null
+    $WorkspaceID = (Get-FabricWorkspace -Workspace $WorkspaceName).id
+
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to capacity id.") -CodeBlock $null
+    $CapacityID = (Get-FabricCapacity -Capacity $CapacityName).id
+
+    # Get the capacity region.
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get capacity region.") -CodeBlock $null
+    $CapacityRegion = (Get-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName).location
+
+    # Get the CU price per hour for the capacity's region.
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get capacity CU price per hour.") -CodeBlock $null
+    $CapacityCUPricePerHour = (Get-FabricCUPricePerHour -Region $CapacityRegion).Items.retailPrice
+
+    Write-Host $WorkspaceID
+    Write-Host $ItemName
+
+    Start-Sleep -Seconds 30
+    
+    # Determine if the item is a lakehouse or a warehouse, then gather the SQL connection string information.
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get lakehouse information.") -CodeBlock $null
+    $Lakehouse = Get-FabricLakehouse -Workspace $WorkspaceID -Lakehouse $ItemName
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get warehouse information.") -CodeBlock $null
+    $Warehouse = (Get-FabricWarehouse -Workspace $WorkspaceID -Warehouse $ItemName)
+    if ($null -ne $Lakehouse.id) {
+        $ItemID     = $Lakehouse.id
+        $ItemType   = $Lakehouse.type
+        $Server     = $Lakehouse.properties.sqlEndpointProperties.connectionString
+    }
+    elseif ($null -ne $Warehouse.id) {
+        $ItemID     = $Warehouse.id
+        $ItemType   = $Warehouse.type
+        $Server     = $Warehouse.properties.connectionString
+    }
+    else {
+        "Unknown item type."
+    }
+
+    # If any variables are still empty or $null then don't run the scenario.
+    if (
+        [string]::IsNullOrEmpty($WorkspaceName) -or `
+        [string]::IsNullOrEmpty($WorkspaceID) -or `
+        [string]::IsNullOrEmpty($ItemID) -or `
+        [string]::IsNullOrEmpty($ItemName) -or `
+        [string]::IsNullOrEmpty($ItemType) -or `
+        [string]::IsNullOrEmpty($Server) -or `
+        [string]::IsNullOrEmpty($Database) -or `
+        [string]::IsNullOrEmpty($CapacitySubscriptionID) -or `
+        [string]::IsNullOrEmpty($CapacityResourceGroupName) -or `
+        [string]::IsNullOrEmpty($CapacityName) -or `
+        [string]::IsNullOrEmpty($CapacitySize) -or `
+        [string]::IsNullOrEmpty($CapacityRegion) -or `
+        [string]::IsNullOrEmpty($CapacityCUPricePerHour) -or `
+        [string]::IsNullOrEmpty($CapacityID)
+    ) {
+        $RunScenario = $false
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("At least one scenario lookup value was not found. The scenario will be terminated.") -CodeBlock $null
+    }
+    else {
+        $RunScenario = $true
+    }
+
+    # Write the parameters to the console and the log.
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Workspace: {0}" -f $WorkspaceName) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("WorkspaceID: {0}" -f $WorkspaceID) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("ItemID: {0}" -f $ItemID) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("ItemName: {0}" -f $ItemName) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("ItemType: {0}" -f $ItemType) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Server: {0}" -f $Server) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Database: {0}" -f $Database) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacitySubscriptionID: {0}" -f $CapacitySubscriptionID) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityResourceGroupName: {0}" -f $CapacityResourceGroupName) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityName: {0}" -f $CapacityName) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacitySize: {0}" -f $CapacitySize) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityRegion: {0}" -f $CapacityRegion) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityCUPricePerHour: {0}" -f $CapacityCUPricePerHour) -CodeBlock $null
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityID: {0}" -f $CapacityID) -CodeBlock $null
+    
+    # Perform the necessary capacity related functions (Assign, scale, and resume) then check to be sure the SQL endpoint is accessible. 
+    if ($true -eq $RunScenario) {
+        # Assign the correct capacity for this scenario to the workspace.
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Assigning capacity to the workspace.") -CodeBlock $null
+        $null = Set-FabricWorkspaceCapacity -Workspace $WorkspaceID -Capacity $CapacityID
+        
+        # Get the capacity's current state and SKU.
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity SKU and status.") -CodeBlock $null
+        $CapacityCurrent = Get-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName
+        
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current state: {0}" -f $CapacityCurrent.properties.state) -CodeBlock $null
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current SKU: {0}" -f $CapacityCurrent.sku.name) -CodeBlock $null
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity expected SKU: {0}" -f $CapacitySize) -CodeBlock $null
+
+        # Check if the current vs. expected SKUs match. If they don't, scale the capacity.
+        if ($CapacityCurrent.sku.name -ne $CapacitySize) {
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity SKUs do not match.") -CodeBlock $null
+            
+            # Pause the capacity if it is running so that the current activity is cleared.
+            if (($CapacityCurrent.properties.state -ne "Paused") -and ($true -eq $PauseOnCapacitySkuChange)) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Pausing the capacity before scaling.") -CodeBlock $null
+                $null = Suspend-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName                
+            }
+
+            # Scale the capacity to the proper SKU.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Initiating a scale operation.") -CodeBlock $null
+            $CapacityCurrent = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
+            
+            # Wait for x seconds after a SKU change.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} seconds after a scaling operation." -f $WaitTimeInSecondsAfterCapacitySkuChange) -CodeBlock $null
+            Start-Sleep -Seconds $WaitTimeInSecondsAfterCapacitySkuChange
+        }
+
+        # Resume the capacity if it is not running.
+        if ($CapacityCurrent.properties.state -ne "Active") {
+            # Start the capacity.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The capacity is paused. Resuming the capacity.") -CodeBlock $null
+            $null = Resume-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
+            
+            # Wait for x seconds after the capacity becomes active.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} seconds after a capacity resume operation." -f $WaitTimeInSecondsAfterCapacityResume) -CodeBlock $null
+            Start-Sleep -Seconds $WaitTimeInSecondsAfterCapacityResume
+        }
+
+        # Set the variables for the SQL endpoint check loop.
+        $RetryLimit = 2
+        $RetryCount = 1
+        $SQLEndpointActive = $false
+
+        do {
+            try {
+                # Run a query against the database to see if it can connect and return a result.
+                $null = Invoke-FabricSQLCommand -Server $Server -Database $Database -Query "SELECT TOP 1 * FROM sys.databases"
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("SQL endpoint is online and responding.") -CodeBlock $null
+                
+                # Set the varaibles to indicate the batch should be run and the SQL endpoint check loop is complete.
+                $RunScenario = $true
+                $SQLEndpointActive = $true
+            }
+            catch {
+                # Set the variables to not run the batch if the SQL endpoint check fails and iterate to the next check loop.
+                $RunScenario = $false
+                $RetryCount = $RetryCount + 1
+                
+                # If the loop has reached its retry limit, terminate the scenario. 
+                if ($RetryCount -gt $RetryLimit) {
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1)) -CodeBlock $null
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ($_.Exception.Message) -CodeBlock $null
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check retry limit has been met. Terminating the SQL endpoint check and the scenario.") -CodeBlock $null
+                }
+                # If the loop has not reached its limit, wait and try again.
+                else {
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1)) -CodeBlock $null
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ($_.Exception.Message) -CodeBlock $null
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check retry limit has not been met. Rechecking the SQL endpoint in 60 seconds.") -CodeBlock $null
+                    Start-Sleep -Seconds 60
+                }     
+            }
+        } until (
+            # Continue running the loop until the SQL endpoint is active or the retry limit is reached.
+            ($true -eq $SQLEndpointActive) -or ($RetryCount -gt $RetryLimit)
+        )
+    }
+
+    if ($true -eq $RunScenario) {
+        $ParallelThreads = foreach ($Thread in 1..$ThreadCount) {
+            # Set the job name for the thread.
+            $JobName = "Thread_{0}_{1}" -f $Thread, (New-Guid)
+
+            # Start the job
+            Start-ThreadJob `
+            -Name $JobName `
+            -StreamingHost $Host `
+            -InitializationScript $JobInitializationScript `
+            -ThrottleLimit $ThreadCount `
+            -ArgumentList ($Thread, $ThreadCount, $IterationCount, $QueryRetryLimit, $QueryDirectory) `
+            -ScriptBlock {
+                param(
+                    $Thread,
+                    $ThreadCount,
+                    $IterationCount,
+                    $QueryRetryLimit,
+                    $QueryDirectory
+                )
+
+                $ThreadStartTime = Get-Date
+
+                # Create the local log variable reference for the synchronized hashtable.
+                $LocalLog = $using:Log
+
+                Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has started." -f $Thread, $ThreadCount) -CodeBlock $null
+
+                # Create the local thread varaible reference for the synchronized hashtable.
+                $LocalThreadStatus = $using:ThreadStatus
+
+                # Create the local query log varaible reference for the synchronized hashtable.
+                $LocalQueryLog = $using:QueryLog
+                $LocalQueryResults = $using:QueryResults
+
+                # Add a record indicating that the thread has started.
+                $LocalThreadStatus[$Thread] = "Started"
+
+                # Wait for all the other threads to start before running anything. 
+                do {
+                    Start-Sleep -Milliseconds 500
+                } while (
+                    $LocalThreadStatus.Count -lt $ThreadCount
+                )
+
+                Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} detected all other threads have initialized." -f $Thread, $ThreadCount) -CodeBlock $null
+
+                foreach ($Iteration in 1..$IterationCount) {
+                    $IterationStartTime = Get-Date
+                    
+                    Add-LogEntry -Thread $Thread -Iteration $IterationID -MessageType "Information" -MessageText ("Iteration {0} of {1} has started." -f $Iteration, $IterationCount) -CodeBlock $null
+                    
+                    $QueryList = Get-ChildItem -Path $QueryDirectory -File
+                    
+                    Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("{0} queries(s) will be run in series." -f ($QueryList | Measure-Object | Select-Object -ExpandProperty Count)) -CodeBlock $null
+                    
+                    # Rest the query logging variables.
+                    $QueryCompleteStatements = $null
+                    $QueryLogStatements = $null
+
+                    $QuerySequence = 0
+                    
+                    # Loop over each query and run then in series.
+                    foreach($CurrentQuery in $QueryList) {
+                        # Set the variables for the query run loop.
+                        $QuerySequence++
+                        $ContinueLoop = $true
+                        $RetryCount = 1
+                        $RetryLimit = $QueryRetryLimit
+
+                        do {
+                            try {                                
+                                # Reset the query output variables.
+                                $QueryResults = $null
+                                $QueryCustomLog = $null
+                                $QueryOutput = $null
+                                $QuerySuccessful = $false
+                                
+                                # Run the current query and collect the output for parsing.
+                                $Query = Get-Content -Path $CurrentQuery.FullName -Raw
+                                Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Information" -MessageText ("Query {0} of {1}" -f $QuerySequence, ($QueryList | Measure-Object | Select-Object -ExpandProperty Count)) -CodeBlock $null
+                                $QueryOutput = Invoke-FabricSQLCommand -Server $Server -Database $Item -Query $Query
+                                
+                                # Check the query output for errors. 
+                                if ($QueryOutput.Errors.Count -gt 0) {
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Warning" -MessageText ("An error was found when parsing the query error output.") -CodeBlock $null
+
+                                    # Combine the messages and errors into a single output for logging.
+                                    $FullOutput = @()
+                                    ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
+                                        $FullOutput += $Line + "`r`n"
+                                    }
+                                    ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
+                                        $FullOutput += $Line + "`r`n"
+                                    }
+                                    # Clear the procedure output before throwing the error so it doesn't log a record for each retry.
+                                    $QueryOutput = @()
+                                    throw ($FullOutput)
+                                }
+
+                                # If there was no error, stop looping and indicate the query was successful.
+                                $ContinueLoop = $false
+                                $QuerySuccessful = $true
+                                Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Information" -MessageText ("Query execution has ended successfully.") -CodeBlock $null
+                            }
+                            catch {
+                                # If there was an error and the retry limit has been reached raise an error.
+                                if ($RetryCount -ge $RetryLimit) {
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Error" -MessageText ("Query has encountered an error.") -CodeBlock $null
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Error" -MessageText ($_.Exception.Message) -CodeBlock $null
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Error" -MessageText ("Query retry limit has been met ({0} of {1}). Exiting retry loop and terminating iteration." -f $RetryCount, $RetryLimit) -CodeBlock $null
+                                    $ContinueLoop = $false
+                                }
+                                # If there was an error and the retry limit has not been reached raise a warning then retry the query.
+                                else {
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Warning" -MessageText ("Query has encountered an error.") -CodeBlock $null
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Warning" -MessageText ($_.Exception.Message) -CodeBlock $null
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Warning" -MessageText ("Query retry limit has not been met ({0} of {1}). Retry loop will attempt to rerun the query in 10 seconds." -f $RetryCount, $RetryLimit) -CodeBlock $null
+                                    $RetryCount = $RetryCount + 1
+                                    Start-Sleep -Seconds 10
+                                }
+                            }
+                        } while (
+                            $true -eq $ContinueLoop
+                        )
+
+                        # If the query was successful parse the output for statement ids, custom logs, and query results.
+                        if($QuerySuccessful) {
+                            # Parse the query messages and create records in the query log for each distributed statement id found.
+                            $Query = $null
+                            $DistributedStatementIDCount = 0
+
+                            # For each message in the query output check to see if it contains a distributed statement id for a query that was executed. If it does, log it. There could be multiple distributed statement ids per query executed by the script (for example a stored procedure may run multiple queries).
+                            Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Information" -MessageText ("Seaching the message output to look for distributed statement ids has started.") -CodeBlock $null
+                            foreach ($Message in $QueryOutput.Messages) {
+                                # Parse the message to see if it contains a distributed statement id.
+                                $ParsedMessage = Find-FabricSQLMessage -Message $Message
+
+                                # If it does contain a distributed statement id, log it to the query log. 
+                                if ($null -ne $ParsedMessage.StatementID) {
+                                    # There is a distributed statement id. Generate the command to write it to the log table.
+                                    $DistributedStatementIDCount += 1
+
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Information" -MessageText ("Iteration {0} of {1} has detected a query statement id. The distributed statement id {2} will be written to the query log." -f $Iteration.Iteration, $Iteration.IterationCount, $ParsedMessage.StatementID) -CodeBlock $null
+                                    $QueryLogKey = (New-Guid).ToString()
+
+                                    # Build the message hashtable.
+                                    $Message = @{
+                                        "Thread"                 = $Thread
+                                        "Iteration"              = $Iteration
+                                        "Query"                  = $Query
+                                        "QueryMessage"           = $ParsedMessage.Message
+                                        "DistributedStatementID" = $ParsedMessage.StatementID
+                                        "DistributedRequestID"   = $ParsedMessage.DistributedRequestID
+                                        "QueryHash"              = $ParsedMessage.QueryHash
+                                    }
+                                    $LocalQueryLog[$QueryLogKey] = $Message
+                                }
+                                else {
+                                    # Do nothing.
+                                }
+                            }
+                        
+                            Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name -MessageType "Information" -MessageText ("Seaching the message output to look for distributed statement ids has ended.") -CodeBlock $null
+
+                            # Convert the query output datasets to a JSON string.
+                            if ($true -eq $StoreQueryResultsOnQueryRecord) {
+                                Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name  -MessageType "Information" -MessageText ("The query results will be stored on the iteration log record.") -CodeBlock $null
+                                $QueryResults = $QueryOutput.Dataset.Tables.Rows | Select-Object * -ExcludeProperty ItemArray, Table, RowError, RowState, HasErrors | ConvertTo-Json
+                            }
+
+                            # Check if the last table in the datasets has the custom query log column. If it does, store that value to store it on the iteration log record.
+                            if ($QueryOutput.Dataset.Tables.Count -gt 0) {
+                                if (($QueryOutput.Dataset.Tables[-1].Columns.ColumnName).Contains("QueryCustomLog")) {
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.Name  -MessageType "Information" -MessageText ("A custom query log was detected and will be stored on the iteration log record.") -CodeBlock $null
+                                    $QueryCustomLog = $QueryOutput.Dataset.Tables[-1].Rows.QueryCustomLog
+                                }
+                            }
+
+                            $QueryResultsKey = (New-Guid).ToString()
+
+                            # Build the message hashtable.
+                            $Message = @{
+                                "Thread"           = $Thread
+                                "Iteration"        = $Iteration
+                                "Query"            = $Query
+                                "StartTime"        = $(if($QueryOutput.QueryStartTime -eq "" -or $null -eq $QueryOutput.QueryStartTime){"NULL"} else {"'{0}'" -f $QueryOutput.QueryStartTime})
+                                "EndTime"          = $(if($QueryOutput.QueryEndTime -eq "" -or $null -eq $QueryOutput.QueryEndTime){"NULL"} else {"'{0}'" -f $QueryOutput.QueryEndTime})
+                                "QueryMessage"     = $(if(($QueryOutput.Messages | ConvertTo-JSON) -eq "null" -or $null -eq $QueryOutput.Messages -or ($QueryOutput.Messages | ConvertTo-JSON) -eq ""){"NULL"} else{"'{0}'" -f ($QueryOutput.Messages | ConvertTo-JSON)})
+                                "QueryResults"     = $(if($QueryResults -eq "" -or $null -eq $QueryResults){"NULL"} else{"'{0}'" -f $QueryResults})
+                                "QUeryCustomLog"   = $(if($QueryCustomLog -eq "" -or $null -eq $QueryCustomLog){"NULL"} else{"'{0}'" -f $QueryCustomLog})
+                            }
+                            $LocalQueryResults[$QueryResultsKey] = $Message
+                            ################################################################################################################### Add a query start/end from the framework in case of query failure maybe???
+
+                            $IterationEndTime = Get-Date
+                            Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("Iteration {0} of {1} has ended." -f $Iteration, $IterationCount) -CodeBlock $null
+                        }
+                    }
+                }
+
+                $ThreadEndTime = Get-Date
+                Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has ended." -f $Thread, $ThreadCount) -CodeBlock $null
+            }
+        }
+
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting for parallel threads to complete.") -CodeBlock $null
+
+        # Let the threads run for up to X minutes before stopping them.
+        $WaitForJobsUntil = (Get-Date).AddMinutes($BatchTimeoutInMinutes)
+        $ContinueLoop = $true
+
+        # Code to write the log to the console while waiting for threads to complete.
+        do {
+            if ((Get-Date) -gt $WaitForJobsUntil) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("The batch has reached the timeout limit of {0} minutes." -f $BatchTimeoutInMinutes) -CodeBlock $null
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("{0} of {1} thread(s) are running and will be stopped." -f ((Get-Job -State "Running").count), $ThreadCount) -CodeBlock $null
+                foreach ($Job in (Get-Job -State "Running")) {
+                    $Job | Stop-Job
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("The thread {0} has been stopped." -f $job.Name) -CodeBlock $null
+                }
+            }
+
+            Start-Sleep -Seconds 10
+        } while (
+            ((Get-Job -State "Running").count -gt 0) -and ($true -eq $ContinueLoop)
+        )
+
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("All parallel threads have completed.") -CodeBlock $null
+
+        # Clean up all the completed jobs.
+        foreach ($Job in (Get-Job -State "Completed")) {
+            $Job | Remove-Job
+        }
+
+        <#
+            Notes for later: Put a script here to go add an end record to all threads that were terminated
+        #>
+
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("All threads have been cleaned up.") -CodeBlock $null
+        
+        $ScenarioEndTime = Get-Date
+    }
+
+    if (($true -eq $CollectQueryInsights -or $true -eq $CollectCapacityMetrics) -and $true -eq $RunScenario) {
+        # Get the list of distributed statement ids that need to have additional metrics collected from query insights or capacity metrics.
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from the query log.") -CodeBlock $null
+        $DistributedStatementIDCount = ($QueryLog.Values.DistributedStatementID | Measure-Object | Select-Object -ExpandProperty Count)
+        
+        if ($DistributedStatementIDCount -gt 0) {
+            $QueryInsightsDistributedStatementIDList = ("'{0}'" -f ($QueryLog.Values.DistributedStatementID -join "','")).ToUpper()
+            $CapacityMetricsDistributedStatementIDList = ($QueryLog.Values.DistributedStatementID).ToUpper()
+
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("{0} distributed statement ids were found in the query log." -f $DistributedStatementIDCount) -CodeBlock $null
+        }
+        else {
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("No distributed statement ids were found in the query log.") -CodeBlock $null
+        }
+    }
+
+    # Gather details from query insights. 
+    if ($true -eq $CollectQueryInsights -and $true -eq $RunScenario -and $DistributedStatementIDCount -gt 0) {
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from query insights.") -CodeBlock $null
+
+        # Wait for the queries to show up in query insights or for X minutes. Whichever condition is hit first will break the loop.
+        $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForQueryInsightsData)
+        $ContinueLoop = $true
+
+        # Look at query insights on the database where the batch ran to gather additional metrics.
+        do {
+            # Continue to look in query insights until all the queries are found.
+            $Query = "
+                WITH QueryInsights AS (
+                    SELECT
+                        UPPER(distributed_statement_id) AS DistributedStatementID,
+                        session_id AS QueryInsightsSessionID,
+                        login_name AS QueryInsightsLoginName,
+                        CONVERT(NVARCHAR, submit_time, 21) AS QueryInsightsSubmitTime,
+                        CONVERT(NVARCHAR, start_time, 21) AS QueryInsightsStartTime,
+                        CONVERT(NVARCHAR, end_time, 21) AS QueryInsightsEndTime,
+                        total_elapsed_time_ms AS QueryInsightsDurationInMS,
+                        row_count AS QueryInsightsRowCount,
+                        [status] AS QueryInsightsStatus,
+                        result_cache_hit AS QueryInsightsResultCacheHit,
+                        NULLIF([label], '') AS QueryInsightsLabel,
+                        command AS QueryInsightsQueryText
+                    FROM queryinsights.exec_requests_history	
+                )
+                    
+                SELECT
+                    *
+                FROM QueryInsights
+                WHERE DistributedStatementID IN ({0})
+            " -f $QueryInsightsDistributedStatementIDList
+            $QueryInsightsList = Invoke-FabricSQLCommand -Server $Server -Database $Database -Query $Query
+            
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in query insights is {0} and the current number is {1}." -f $DistributedStatementIDCount, $QueryInsightsList.Dataset.Tables.Rows.Count) -CodeBlock $null
+            
+            # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
+            if (($QueryInsightsList.Dataset.Tables.Rows.Count -ne $DistributedStatementIDCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking query insights again.") -CodeBlock $null
+                Start-Sleep 60
+            }
+        
+            # If the time limit has expired, stop checking for new queries.
+            if ((Get-Date) -gt $WaitForJobsUntil) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in query insghts. Therefore, columns in the query log that contain query insights metrics may be incomplete." -f $WaitTimeInMinutesForQueryInsightsData) -CodeBlock $null
+                $ContinueLoop = $false
+            }
+        } while (
+            ($QueryInsightsList.Dataset.Tables.Rows.Count -ne $DistributedStatementIDCount) -and ($true -eq $ContinueLoop)
+        )
+        
+        # Store the query insights results.
+        if ($QueryInsightsList.Dataset.Tables.Rows.Count -gt 0) {
+            $QueryInsights = $QueryInsightsList.Dataset.Tables.Rows
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Updating the query log with the data available in query insights has started.") -CodeBlock $null
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Updating the query log with the data available in query insights has ended.") -CodeBlock $null
+        }
+    }
+
+    # Gather details from capacity metrics. 
+    if ($true -eq $CollectCapacityMetrics -and $true -eq $RunScenario -and $DistributedStatementIDCount -gt 0) {
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Gathering CU usage from capacity metrics.") -CodeBlock $null
+
+        # Wait for the queries to show up in capacity metrics or for X minutes. Whichever condition is hit first will break the loop.
+        $WaitForJobsUntil = (Get-Date).AddMinutes($WaitTimeInMinutesForCapacityMetricsData)
+        $ContinueLoop = $true
+
+        # Look at capacity metrics gather the usage details.
+        do {
+            $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $CapacityMetricsDistributedStatementIDList -Date ([datetime]$ScenarioStartTime).ToString("yyyy-MM-dd 00:00:00")
+
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementIDCount, $CapacityMetrics.Count) -CodeBlock $null
+
+            # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
+            if (($CapacityMetrics.Count -ne $DistributedStatementIDCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking capacity metrics again.") -CodeBlock $null
+                Start-Sleep 60
+            }
+
+            # If the time limit has expired, stop checking for new queries.
+            if ((Get-Date) -gt $WaitForJobsUntil) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, columns in the query log that contain capacity metrics may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData) -CodeBlock $null
+                $ContinueLoop = $false
+            }
+        }
+        while (
+            ($CapacityMetrics.Count -ne $DistributedStatementIDCount) -and ($true -eq $ContinueLoop)
+        )
+    }
+
+    # Write the results to the file system.
+    $OutputDirectory
+    $Log | ConvertTo-Json | Out-File -FilePath ("{0}\{1}_{2}\Log.txt" -f $ScenarioStartTime.ToString("yyyy-MM-dd HH.mm.ss"), $Scenario, $OutputDirectory)
+    $QueryLog | ConvertTo-Json | Out-File -FilePath ("{0}\{1}_{2}\QueryLog.txt" -f $ScenarioStartTime.ToString("yyyy-MM-dd HH.mm.ss"), $Scenario, $OutputDirectory)
+    $QueryResults | ConvertTo-Json | Out-File -FilePath ("{0}\{1}_{2}\QueryResults.txt" -f $ScenarioStartTime.ToString("yyyy-MM-dd HH.mm.ss"), $Scenario, $OutputDirectory)
+    $QueryInsights | ConvertTo-Json | Out-File -FilePath ("{0}\{1}_{2}\QueryInsights.txt" -f $ScenarioStartTime.ToString("yyyy-MM-dd HH.mm.ss"), $Scenario, $OutputDirectory)
+    $CapacityMetrics | ConvertTo-Json | Out-File -FilePath ("{0}\{1}_{2}\CapacityMetrics.txt" -f $ScenarioStartTime.ToString("yyyy-MM-dd HH.mm.ss"), $Scenario, $OutputDirectory)
+}
