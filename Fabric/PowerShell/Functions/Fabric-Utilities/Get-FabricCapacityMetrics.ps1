@@ -30,7 +30,7 @@ function Get-FabricCapacityMetrics {
 	}
 	# Otherwise, validate or lookup the capacity id.
 	else {
-		$CapacityID = (Get-FabricCapacity -Location "Fabric" -Capacity $Capacity).id
+		$CapacityID = (Get-FabricCapacity -Capacity $Capacity).id
 	}
 
 	# Format the operation id list including escaping the double quotes in the format of \""ABC-DFE-GHI\"",\""123-456-789\"".

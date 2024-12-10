@@ -17,7 +17,7 @@ function Set-FabricWorkspaceCapacity {
         $CapacityID = $Capacity
     }
     else {
-        $CapacityID = (Get-FabricCapacity -Location "Fabric" -Capacity $Capacity -AccessToken $AccessToken).id
+        $CapacityID = (Get-FabricCapacity -Capacity $Capacity -AccessToken $AccessToken).id
     }
 
     if($WorkspaceDetail.capacityId -eq $CapacityID) {

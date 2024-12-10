@@ -12,5 +12,4 @@ function Test-FabricId {
     else {
         $false
     }
-
 }

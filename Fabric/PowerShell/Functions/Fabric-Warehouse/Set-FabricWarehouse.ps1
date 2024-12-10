@@ -1,8 +1,10 @@
-function Get-FabricWarehouse {
+function Set-FabricWarehouse {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)] [string] $Workspace,
         [Parameter(Mandatory = $true)] [string] $Warehouse,
+        [Parameter(Mandatory = $false)] [string] $Name,
+        [Parameter(Mandatory = $false)] [string] $Description,
         [Parameter(Mandatory = $false)] [string] $AccessToken
     )
 
@@ -18,7 +20,14 @@ function Get-FabricWarehouse {
     else {
         $WarehouseID = (Get-FabricItem -Workspace $WorkspaceID -Item $Warehouse -ItemType "Warehouse" -AccessToken $AccessToken).id
     }
-    
-    $Uri        = "https://api.fabric.microsoft.com/v1/workspaces/{0}/warehouses/{1}" -f $WorkspaceID, $WarehouseID
-    Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+
+    [hashtable] $BodyProperties = @{
+        "displayName" = $Name
+        "description" = $Description
+    }
+
+    $Body = Get-FabricFilterHashtable $BodyProperties | ConvertTo-Json
+
+    $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/warehouses/{1}" -f $WorkspaceID, $WarehouseID
+    Invoke-FabricRestMethod -Uri $Uri -Method PATCH -Body $Body -AccessToken $AccessToken
 }

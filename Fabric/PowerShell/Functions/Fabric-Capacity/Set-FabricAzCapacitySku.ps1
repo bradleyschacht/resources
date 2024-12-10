@@ -1,4 +1,4 @@
-function Set-FabricCapacitySku {
+function Set-FabricAzCapacitySku {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)] [string] $SubscriptionID,

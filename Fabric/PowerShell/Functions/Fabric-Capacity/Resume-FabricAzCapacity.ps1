@@ -1,4 +1,4 @@
-function Resume-FabricCapacity {
+function Resume-FabricAzCapacity {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)] [string]$SubscriptionID,

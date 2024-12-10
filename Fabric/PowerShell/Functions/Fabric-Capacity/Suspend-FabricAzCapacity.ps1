@@ -1,4 +1,4 @@
-function Suspend-FabricCapacity {
+function Suspend-FabricAzCapacity {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)] [string]$SubscriptionID,

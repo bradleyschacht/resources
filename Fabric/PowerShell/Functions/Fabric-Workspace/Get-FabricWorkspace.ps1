@@ -23,7 +23,7 @@ function Get-FabricWorkspace {
     if($DetailOutput) {
         foreach($WorkspaceDetail in $WorkspaceList) {
             $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}" -f $WorkspaceDetail.id
-            Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+            (Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken | Select-Object * -ExpandProperty oneLakeEndpoints -ExcludeProperty oneLakeEndpoints)
         }
     }
     else {
