@@ -34,8 +34,7 @@ function Invoke-FabricBenchmark {
     # Job Initialization Script
     $JobInitializationScript = {
         # Get the Fabric functions.
-        Invoke-Expression (Get-Content -Path "C:\GitHub\resources\Fabric\PowerShell\Load Fabric Functions - Local.ps1" -Raw)
-        #(Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Load%20Fabric%20Functions.ps1") | Invoke-Expression
+        (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/bradleyschacht/resources/refs/heads/main/Fabric/PowerShell/Load%20Fabric%20Functions.ps1") | Invoke-Expression
 
         function Add-LogEntry {
             param (

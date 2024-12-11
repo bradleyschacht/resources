@@ -19,7 +19,10 @@ function Get-FabricLakehouse {
         
          foreach ($WorkspaceItem in $WorkspaceItemList) {
              $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/lakehouses/{1}" -f $WorkspaceID, $WorkspaceItem.id
-             $LakehouseList += (Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken | Select-Object * -ExpandProperty properties -ExcludeProperty properties)
+             $Response = Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+             if ($Response.id) {
+                $LakehouseList += ($Response | Select-Object * -ExpandProperty properties -ExcludeProperty properties)
+             }
         }
 
         $LakehouseList
@@ -34,6 +37,9 @@ function Get-FabricLakehouse {
         }
         
         $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/lakehouses/{1}" -f $WorkspaceID, $LakehouseID
-        Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken | Select-Object * -ExpandProperty properties -ExcludeProperty properties
+        $Response = Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+        if ($Response.id) {
+            $Response | Select-Object * -ExpandProperty properties -ExcludeProperty properties
+        }
     }
 }

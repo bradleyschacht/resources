@@ -19,7 +19,10 @@ function Get-FabricWarehouse {
         
          foreach ($WorkspaceItem in $WorkspaceItemList) {
              $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/warehouses/{1}" -f $WorkspaceID, $WorkspaceItem.id
-             $WarehouseList += (Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken | Select-Object * -ExpandProperty properties -ExcludeProperty properties)
+             $Response = Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+             if ($Response.id) {
+                $WarehouseList += ($Response | Select-Object * -ExpandProperty properties -ExcludeProperty properties)
+             }
         }
 
         $WarehouseList
@@ -34,6 +37,9 @@ function Get-FabricWarehouse {
         }
         
         $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/warehouses/{1}" -f $WorkspaceID, $WarehouseID
-        Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken | Select-Object * -ExpandProperty properties -ExcludeProperty properties
+        $Response = Invoke-FabricRestMethod -Uri $Uri -Method GET -AccessToken $AccessToken
+        if ($Response.id) {
+            $Response | Select-Object * -ExpandProperty properties -ExcludeProperty properties
+        }
     }
 }
