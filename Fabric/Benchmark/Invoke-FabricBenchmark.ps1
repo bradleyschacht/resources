@@ -7,6 +7,34 @@ Query Results -> Query Log + Query Results
 
 
 
+Log
+Query
+Query Requests (Contains Query Insights and Capacity Metrics)
+Query Results
+Query Errors
+
+
+{
+"abc-def-123-456-ghi" :
+    {
+        Thread:
+        Iteration:
+        Query:
+        Sequence:
+        Status:
+        StartTime:
+        EndTime:
+        Retries?
+        Errors
+        Success:
+            Requests:
+        
+
+    }
+
+}
+
+
 Clear-Host
 
 $Var = @{}
