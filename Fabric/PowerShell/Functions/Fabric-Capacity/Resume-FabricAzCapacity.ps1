@@ -12,7 +12,7 @@ function Resume-FabricAzCapacity {
         $AccessToken = Get-FabricAccessToken -ResourceType "Azure"
     }
 
-    $Capacity = Get-FabricCapacity -Location "Azure" -AccessToken $AccessToken -SubscriptionID $SubscriptionID -ResourceGroupName $ResourceGroupName -Capacity $CapacityName -APIVersion $APIVersion
+    $Capacity = Get-FabricAzCapacity -AccessToken $AccessToken -SubscriptionID $SubscriptionID -ResourceGroupName $ResourceGroupName -Capacity $CapacityName -APIVersion $APIVersion
     
     if ($Capacity.properties.state -eq "Active") {
         #Do nothing.
@@ -25,7 +25,7 @@ function Resume-FabricAzCapacity {
             Start-Sleep -Seconds 5
 
             do {
-                $Capacity = Get-FabricCapacity -Location "Azure" -AccessToken $AccessToken -SubscriptionID $SubscriptionID -ResourceGroupName $ResourceGroupName -Capacity $CapacityName -APIVersion $APIVersion
+                $Capacity = Get-FabricAzCapacity -AccessToken $AccessToken -SubscriptionID $SubscriptionID -ResourceGroupName $ResourceGroupName -Capacity $CapacityName -APIVersion $APIVersion
                     
                 if ($Capacity.properties.state -ne "Active") {
                     Start-Sleep -Seconds 5
