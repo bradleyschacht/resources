@@ -28,8 +28,8 @@ CREATE TABLE [dbo].[Statement] (
     [QueryInsightsCommand]                          VARCHAR (MAX)   NULL,
     [CapacityMetricsStartTime]                      DATETIME2 (6)   NULL,
     [CapacityMetricsEndTime]                        DATETIME2 (6)   NULL,
-    [CapacityMetricsCUs]                            DECIMAL (15,4)  NULL,
-    [CapacityMetricsQueryPrice]                     DECIMAL (18,6)  NULL,
+    [CapacityMetricsCapacityUnitSeconds]            DECIMAL (15,4)  NULL,
+    [CapacityMetricsOperationCost]                  DECIMAL (18,6)  NULL,
     [CapacityMetricsDurationInSeconds]              INT             NULL,
     [CreateTime]                                    DATETIME2 (6)   NULL,
     [LastUpdateTime]                                DATETIME2 (6)   NULL

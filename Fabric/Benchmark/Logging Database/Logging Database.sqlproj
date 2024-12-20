@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Folder Include="dbo" />
+    <Folder Include="dbo\Stored Procedures" />
     <Folder Include="reporting" />
     <Folder Include="reporting\Views" />
   </ItemGroup>

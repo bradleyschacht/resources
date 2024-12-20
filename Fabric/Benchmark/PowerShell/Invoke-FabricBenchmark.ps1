@@ -151,7 +151,7 @@ function Invoke-FabricBenchmark {
 
     # Get the CU price per hour for the capacity's region.
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get capacity CU price per hour.")
-    $CapacityCUPricePerHour = (Get-FabricCUPricePerHour -Region $CapacityRegion).Items.retailPrice
+    $CapacityUnitPricePerHour = (Get-FabricCUPricePerHour -Region $CapacityRegion).Items.retailPrice
     
     # Determine if the item is a lakehouse or a warehouse, then gather the SQL connection string information.
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get lakehouse information.")
@@ -187,7 +187,7 @@ function Invoke-FabricBenchmark {
         [string]::IsNullOrEmpty($CapacityName) -or `
         [string]::IsNullOrEmpty($CapacitySize) -or `
         [string]::IsNullOrEmpty($CapacityRegion) -or `
-        [string]::IsNullOrEmpty($CapacityCUPricePerHour) -or `
+        [string]::IsNullOrEmpty($CapacityUnitPricePerHour) -or `
         [string]::IsNullOrEmpty($CapacityID)
     ) {
         $RunBatch = $false
@@ -209,7 +209,7 @@ function Invoke-FabricBenchmark {
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityName: {0}" -f $CapacityName)
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacitySize: {0}" -f $CapacitySize)
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityRegion: {0}" -f $CapacityRegion)
-    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityCUPricePerHour: {0}" -f $CapacityCUPricePerHour)
+    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityUnitPricePerHour: {0}" -f $CapacityUnitPricePerHour)
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityID: {0}" -f $CapacityID)
     
     # Perform the necessary capacity related functions (Assign | Scale | Resume) then check to be sure the SQL endpoint is accessible. 
@@ -606,7 +606,7 @@ function Invoke-FabricBenchmark {
             "CapacitySubscriptionID"    = $CapacitySubscriptionID
             "CapacityResourceGroupName" = $CapacityResourceGroupName
             "CapacitySize"              = $CapacitySize
-            "CapacityCUPricePerHour"    = $CapacityCUPricePerHour
+            "CapacityUnitPricePerHour"  = $CapacityUnitPricePerHour
             "CapacityRegion"            = $CapacityRegion
             "Dataset"                   = $Dataset
             "DataSize"                  = $DataSize
@@ -707,7 +707,7 @@ function Invoke-FabricBenchmark {
 
         # Look at capacity metrics gather the usage details.
         do {
-            $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDListCapacityMetrics -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {$CapacityCUPricePerHour / 60 / 60 * $_.CapacityUnitSeconds}}
+            $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDListCapacityMetrics -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {'{0:F6}' -f ([Math]::Round(($CapacityUnitPricePerHour / 60 / 60 * $_.CapacityUnitSeconds), 6))}}
 
             Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementCount, $CapacityMetrics.Count)
 
