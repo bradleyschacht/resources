@@ -9,10 +9,11 @@ function Invoke-FabricBenchmarkLogImport {
     $BatchLogPath =  Join-Path -Path $LogDirectory -ChildPath "01_BatchLog.txt"
     $ThreadLogPath =  Join-Path -Path $LogDirectory -ChildPath "02_ThreadLog.txt"
     $IterationLogPath =  Join-Path -Path $LogDirectory -ChildPath "03_IterationLog.txt"
-    $RequestLogPath =  Join-Path -Path $LogDirectory -ChildPath "04_RequestLog.txt"
+    $QueryLogPath =  Join-Path -Path $LogDirectory -ChildPath "04_QueryLog.txt"
     $StatementLogPath =  Join-Path -Path $LogDirectory -ChildPath "05_StatementLog.txt"
     $QueryInsightsPath =  Join-Path -Path $LogDirectory -ChildPath "06_QueryInsights.txt"
     $CapacityMetricsPath =  Join-Path -Path $LogDirectory -ChildPath "07_CapacityMetrics.txt"
+    $QueryErrorPath =  Join-Path -Path $LogDirectory -ChildPath "QueryError.txt"
     
     $LogImport = [System.Data.DataTable]::new()
     [void]$LogImport.Columns.Add("LogType", [string])
@@ -54,16 +55,16 @@ function Invoke-FabricBenchmarkLogImport {
         Write-Host ("Iteration log not found at {0}" -f $IterationLogPath) -ForegroundColor Red
     }
     
-    # Request Log
-    if (Test-Path -Path $RequestLogPath) {
-        Get-Content -Path $RequestLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
+    # Query Log
+    if (Test-Path -Path $QueryLogPath) {
+        Get-Content -Path $QueryLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
             foreach ($Log in $_.Keys) {
-                [void]$LogImport.Rows.Add("RequestLog", ($_.$Log | ConvertTo-Json));
+                [void]$LogImport.Rows.Add("QueryLog", ($_.$Log | ConvertTo-Json));
             }
         }
     }
     else {
-        Write-Host ("Request log not found at {0}" -f $RequestLogPath) -ForegroundColor Red
+        Write-Host ("Query log not found at {0}" -f $QueryLogPath) -ForegroundColor Red
     }
     
     # Statement Log
@@ -100,6 +101,18 @@ function Invoke-FabricBenchmarkLogImport {
     }
     else {
         Write-Host ("Capacity Metrics not found at {0}" -f $CapacityMetricsPath) -ForegroundColor Red
+    }
+
+    # Query Error
+    if (Test-Path -Path $QueryErrorPath) {
+        Get-Content -Path $QueryErrorPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
+            foreach ($Log in $_.Keys) {
+                [void]$LogImport.Rows.Add("QueryError", ($_.$Log | ConvertTo-Json));
+            }
+        }
+    }
+    else {
+        Write-Host ("Query error log not found at {0}" -f $QueryErrorPath) -ForegroundColor Red
     }
     
     # Load the data to the SQL database.
@@ -171,8 +184,7 @@ function Invoke-FabricBenchmarkLogImport {
             JSON_VALUE(LogContent, '$.BatchID') AS BatchID,
             JSON_VALUE(LogContent, '$.BatchName') AS BatchName,
             JSON_VALUE(LogContent, '$.BatchDescription') AS BatchDescription,
-            JSON_VALUE(LogContent, '$.RequestDirectory') AS RequestDirectory,
-            JSON_VALUE(LogContent, '$.Status') AS Status,
+            JSON_VALUE(LogContent, '$.QueryDirectory') AS QueryDirectory,
             JSON_VALUE(LogContent, '$.ThreadCount') AS ThreadCount,
             JSON_VALUE(LogContent, '$.IterationCount') AS IterationCount,
             JSON_VALUE(LogContent, '$.WorkspaceID') AS WorkspaceID,
@@ -193,7 +205,6 @@ function Invoke-FabricBenchmarkLogImport {
             JSON_VALUE(LogContent, '$.DataStorage') AS DataStorage,
             JSON_VALUE(LogContent, '$.StartTime') AS StartTime,
             JSON_VALUE(LogContent, '$.EndTime') AS EndTime,
-            NULL AS HasError,
             GETDATE() AS CreateTime,
             GETDATE() AS LastUpdateTime
         FROM dbo.LogImport
@@ -226,16 +237,16 @@ function Invoke-FabricBenchmarkLogImport {
         FROM dbo.LogImport
         WHERE LogType = 'IterationLog'
     
-        /* Request */
-        INSERT INTO dbo.Request
+        /* Query */
+        INSERT INTO dbo.Query
         SELECT
-            JSON_VALUE(LogContent,'$.RequestID') AS RequestID,
+            JSON_VALUE(LogContent,'$.QueryID') AS QueryID,
             JSON_VALUE(LogContent,'$.BatchID') AS BatchID,
             JSON_VALUE(LogContent,'$.ThreadID') AS ThreadID,
             JSON_VALUE(LogContent,'$.IterationID') AS IterationID,
-            JSON_VALUE(LogContent,'$.Sequence') AS RequestSequence,
-            JSON_VALUE(LogContent,'$.RequestFile') AS RequestFile,
-            JSON_VALUE(LogContent,'$.RequestName') AS RequestName,
+            JSON_VALUE(LogContent,'$.Sequence') AS QuerySequence,
+            JSON_VALUE(LogContent,'$.QueryFilePath') AS QueryFilePath,
+            JSON_VALUE(LogContent,'$.QueryFileName') AS QueryFileName,
             JSON_VALUE(LogContent,'$.Status') AS Status,
             JSON_VALUE(LogContent,'$.StartTime') AS StartTime,
             JSON_VALUE(LogContent,'$.EndTime') AS EndTime,
@@ -245,11 +256,11 @@ function Invoke-FabricBenchmarkLogImport {
             JSON_VALUE(LogContent,'$.ResultsRecordCount') AS ResultsRecordCount,
             JSON_VALUE(LogContent,'$.Errors') AS Errors,
             JSON_VALUE(LogContent,'$.Command') AS Command,
-            COALESCE(CONVERT(NVARCHAR(MAX), JSON_QUERY(LogContent,'$.RequestMessage')), JSON_VALUE(LogContent,'$.RequestMessage')) AS RequestMessage,
+            COALESCE(CONVERT(NVARCHAR(MAX), JSON_QUERY(LogContent,'$.QueryMessage')), JSON_VALUE(LogContent,'$.QueryMessage')) AS QueryMessage,
             GETDATE() AS CreateTime,
             GETDATE() AS LastUpdateTime
         FROM dbo.LogImport
-        WHERE LogType = 'RequestLog'
+        WHERE LogType = 'QueryLog'
     
         /* Statement */
         DECLARE @CUPricePerHour DECIMAL(18,6) = (
@@ -265,7 +276,7 @@ function Invoke-FabricBenchmarkLogImport {
                 JSON_VALUE(LogContent,'$.BatchID') AS BatchID,
                 JSON_VALUE(LogContent,'$.ThreadID') AS ThreadID,
                 JSON_VALUE(LogContent,'$.IterationID') AS IterationID,
-                JSON_VALUE(LogContent,'$.RequestID') AS RequestID,
+                JSON_VALUE(LogContent,'$.QueryID') AS QueryID,
                 JSON_VALUE(LogContent,'$.StatementMessage') AS StatementMessage,
                 JSON_VALUE(LogContent,'$.DistributedStatementID') AS DistributedStatementID,
                 JSON_VALUE(LogContent,'$.DistributedRequestID') AS DistributedRequestID,
@@ -311,7 +322,7 @@ function Invoke-FabricBenchmarkLogImport {
             SL.BatchID,
             SL.ThreadID,
             SL.IterationID,
-            SL.RequestID,
+            SL.QueryID,
             SL.StatementMessage,
             SL.DistributedStatementID,
             SL.DistributedRequestID,
@@ -343,6 +354,16 @@ function Invoke-FabricBenchmarkLogImport {
             ON SL.StatementID = QI.StatementID
         LEFT JOIN CapacityMetrics AS CM
             ON SL.StatementID = CM.StatementID
+
+        /* Query Error */
+        INSERT INTO dbo.QueryError
+        SELECT
+            JSON_VALUE(LogContent,'$.QueryID') AS QueryID,
+            JSON_VALUE(LogContent,'$.Error') AS Error,
+            GETDATE() AS CreateTime,
+            GETDATE() AS LastUpdateTime
+        FROM dbo.LogImport
+        WHERE LogType = 'QueryError'
         "
     
         # Check the query output for errors. 
