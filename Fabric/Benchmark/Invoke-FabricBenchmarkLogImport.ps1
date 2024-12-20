@@ -6,11 +6,11 @@ function Invoke-FabricBenchmarkLogImport {
     )
     
     # Define the variables
-    $BatchLogPath =  Join-Path -Path $LogDirectory -ChildPath "01_BatchLog.txt"
-    $ThreadLogPath =  Join-Path -Path $LogDirectory -ChildPath "02_ThreadLog.txt"
-    $IterationLogPath =  Join-Path -Path $LogDirectory -ChildPath "03_IterationLog.txt"
-    $QueryLogPath =  Join-Path -Path $LogDirectory -ChildPath "04_QueryLog.txt"
-    $StatementLogPath =  Join-Path -Path $LogDirectory -ChildPath "05_StatementLog.txt"
+    $BatchLogPath =  Join-Path -Path $LogDirectory -ChildPath "01_Batch.txt"
+    $ThreadLogPath =  Join-Path -Path $LogDirectory -ChildPath "02_Thread.txt"
+    $IterationLogPath =  Join-Path -Path $LogDirectory -ChildPath "03_Iteration.txt"
+    $QueryLogPath =  Join-Path -Path $LogDirectory -ChildPath "04_Query.txt"
+    $StatementLogPath =  Join-Path -Path $LogDirectory -ChildPath "05_Statement.txt"
     $QueryInsightsPath =  Join-Path -Path $LogDirectory -ChildPath "06_QueryInsights.txt"
     $CapacityMetricsPath =  Join-Path -Path $LogDirectory -ChildPath "07_CapacityMetrics.txt"
     $QueryErrorPath =  Join-Path -Path $LogDirectory -ChildPath "QueryError.txt"
@@ -310,8 +310,8 @@ function Invoke-FabricBenchmarkLogImport {
                 JSON_VALUE(LogContent,'$.OperationID') AS StatementID,
                 JSON_VALUE(LogContent,'$.StartTime') AS CapacityMetricsStartTime,
                 JSON_VALUE(LogContent,'$.EndTime') AS CapacityMetricsEndTime,
-                JSON_VALUE(LogContent,'$.SumCUs') AS CapacityMetricsCUs,
-                JSON_VALUE(LogContent,'$.SumDuration') AS CapacityMetricsDurationInSeconds
+                JSON_VALUE(LogContent,'$.CapacityUnitSeconds') AS CapacityMetricsCapacityUnitSeconds,
+                JSON_VALUE(LogContent,'$.DurationInSeconds') AS CapacityMetricsDurationInSeconds
             FROM dbo.LogImport
             WHERE LogType = 'CapacityMetrics'
         )
@@ -344,8 +344,8 @@ function Invoke-FabricBenchmarkLogImport {
             QI.QueryInsightsCommand,
             CM.CapacityMetricsStartTime,
             CM.CapacityMetricsEndTime,
-            CM.CapacityMetricsCUs,
-            CONVERT(DECIMAL(18,6), ROUND(CM.CapacityMetricsCUs * @CUPricePerHour, 6)) AS CapacityMetricsQueryPrice,
+            CM.CapacityMetricsCapacityUnitSeconds,
+            CM.OperationCost,
             CONVERT(INT, ROUND(CM.CapacityMetricsDurationInSeconds, 0)) AS CapacityMetricsDurationInSeconds,
             GETDATE() AS CreateTime,
             GETDATE() AS LastUpdateTime

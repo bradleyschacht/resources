@@ -116,8 +116,8 @@ function Invoke-FabricBenchmark {
     $LogThread = [Hashtable]::Synchronized(@{})
     $LogIteration = [Hashtable]::Synchronized(@{})
     $LogQuery = [Hashtable]::Synchronized(@{})
-    $LogQueryErrors = [Hashtable]::Synchronized(@{})
-    $LogQueryResults = [Hashtable]::Synchronized(@{})
+    $LogQueryError = [Hashtable]::Synchronized(@{})
+    $LogQueryResult = [Hashtable]::Synchronized(@{})
     $LogStatement = [Hashtable]::Synchronized(@{})
 
     # Create the local log variable reference.
@@ -331,8 +331,8 @@ function Invoke-FabricBenchmark {
                 $LocalLogThread = $using:LogThread
                 $LocalLogIteration = $using:LogIteration
                 $LocalLogQuery = $using:LogQuery
-                $LocalLogQueryErrors = $using:LogQueryErrors
-                $LocalLogQueryResults = $using:LogQueryResults
+                $LocalLogQueryError = $using:LogQueryError
+                $LocalLogQueryResult = $using:LogQueryResult
                 $LocalLogStatement = $using:LogStatement
 
                 Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has started." -f $Thread, $ThreadCount)
@@ -416,15 +416,12 @@ function Invoke-FabricBenchmark {
                             catch {
                                 # Generate an error key for the log.
                                 $ErrorKey = (New-Guid).ToString()
-                                
-                                # Build the message hashtable.
-                                $Message = @{
+
+                                # Add the message to the log.
+                                $LocalLogQueryError[$ErrorKey] = @{
                                     "QueryID"    = $QueryID
                                     "Error"      = $_.Exception.Message
                                 }
-
-                                # Add the message to the log.
-                                $LocalLogQueryErrors[$ErrorKey] = $Message
 
                                 # If there was an error and the retry limit has been reached raise an error.
                                 if ($RetryCount -ge $RetryLimit) {
@@ -463,8 +460,8 @@ function Invoke-FabricBenchmark {
 
                                     Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.BaseName -MessageType "Information" -MessageText ("Iteration {0} of {1} has detected a query statement id. The distributed statement id {2} will be written to the statement log." -f $Iteration.Iteration, $Iteration.IterationCount, $ParsedMessage.StatementID)
 
-                                    # Build the message hashtable.
-                                    $Message = @{
+                                    # Add the message to the log.
+                                    $LocalLogStatement[$ParsedMessage.StatementID] = @{
                                         "StatementID"            = $ParsedMessage.StatementID
                                         "BatchID"                = $BatchID
                                         "ThreadID"               = $ThreadID
@@ -477,9 +474,6 @@ function Invoke-FabricBenchmark {
                                         "DistributedRequestID"   = $ParsedMessage.DistributedRequestID
                                         "QueryHash"              = $ParsedMessage.QueryHash
                                     }
-
-                                    # Add the message to the log.
-                                    $LocalLogStatement[$ParsedMessage.StatementID] = $Message
                                 }
                                 else {
                                     # Do nothing.
@@ -497,20 +491,17 @@ function Invoke-FabricBenchmark {
                                     Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.BaseName  -MessageType "Information" -MessageText ("A custom query log was detected and will be stored in the query result log.")
                                 }
 
-                                # Build the message hashtable.
-                                $Message = @{
+                                # Add the message to the log.
+                                $LocalLogQueryResult[$QueryID] = @{
                                     "QueryID"   = $QueryID
                                     "Results"   = $(if ($true -eq $StoreQueryResults) {$QueryOutput.Dataset.Tables.Rows | Select-Object * -ExcludeProperty ItemArray, Table, RowError, RowState, HasErrors})
                                     "CustomLog" = $(if (($QueryOutput.Dataset.Tables[-1].Columns.ColumnName).Contains("QueryCustomLog")) {$QueryOutput.Dataset.Tables[-1].Rows.QueryCustomLog})
                                 }
-
-                                # Add the message to the log.
-                                $LocalLogQueryResults[$QueryID] = $Message
                             }
                         }
 
-                        # Build the message hashtable.
-                        $Message = @{
+                        # Add the message to the log.
+                        $LocalLogQuery[$QueryID] = @{
                             "QueryID"                   = $QueryID
                             "BatchID"                   = $BatchID
                             "ThreadID"                  = $ThreadID
@@ -531,9 +522,6 @@ function Invoke-FabricBenchmark {
                             "Command"                   = $Query
                             "QueryMessage"              = $(if ($true -eq $QuerySuccessful) {$QueryOutput.Messages})
                         }
-
-                        # Add the message to the log.
-                        $LocalLogQuery[$QueryID] = $Message
                     }
 
                     # Add the message to the log.
@@ -556,7 +544,7 @@ function Invoke-FabricBenchmark {
                     "StartTime" = $ThreadStartTime
                     "EndTime"   = $(Get-Date)
                 }
-                
+
                 Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has ended." -f $Thread, $ThreadCount)
             }
         }
@@ -719,7 +707,7 @@ function Invoke-FabricBenchmark {
 
         # Look at capacity metrics gather the usage details.
         do {
-            $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDListCapacityMetrics -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00")
+            $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDListCapacityMetrics -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {$CapacityCUPricePerHour / 60 / 60 * $_.CapacityUnitSeconds}}
 
             Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementCount, $CapacityMetrics.Count)
 
@@ -744,20 +732,17 @@ function Invoke-FabricBenchmark {
     if(!$Log) {$Log = @{}}
     if(!$LogQuery) {$LogQuery = @{}}
     if(!$LogStatement) {$LogStatement = @{}}
-    if(!$LogQueryResults) {$LogQueryResults = @{}}
+    if(!$LogQueryResult) {$LogQueryResult = @{}}
     if(!$QueryInsights) {$QueryInsights = @{}}
     if(!$CapacityMetrics) {$CapacityMetrics = @{}}
 
     $Log | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\Log.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
-    
     $LogBatch | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\01_Batch.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
     $LogThread | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\02_Thread.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
     $LogIteration | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\03_Iteration.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
-    
     $LogQuery | ConvertTo-Json -Depth 5 | Out-File (New-Item ("{0}\{1}_{2}\04_Query.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
-    $LogQueryErrors | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\QueryErrors.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
-    $LogQueryResults | ConvertTo-Json -Depth 3 -WarningAction SilentlyContinue | Out-File (New-Item ("{0}\{1}_{2}\QueryResults.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
-    
+    $LogQueryError | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\QueryError.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
+    $LogQueryResult | ConvertTo-Json -Depth 3 -WarningAction SilentlyContinue | Out-File (New-Item ("{0}\{1}_{2}\QueryResult.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
     $LogStatement | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\05_Statement.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)   
     $QueryInsights | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\06_QueryInsights.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)
     $CapacityMetrics | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\07_CapacityMetrics.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchName) -Force)

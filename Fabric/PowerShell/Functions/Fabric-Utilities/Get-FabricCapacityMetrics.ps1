@@ -76,7 +76,7 @@ function Get-FabricCapacityMetrics {
 		
 		$Results = Invoke-RestMethod -Method POST -Uri $Uri -Headers $Headers -ConnectionTimeoutSeconds 120 -OperationTimeoutSeconds 120 -Body $Body
 
-		$Results.results.tables.rows | Select-Object name, @{Name='WorkspaceName'; Expression={ $_.'Items[WorkspaceName]' }}, @{Name='ItemKind'; Expression={ $_.'Items[ItemKind]' }}, @{Name='ItemName'; Expression={ $_.'Items[ItemName]' }}, @{Name='OperationStartTime'; Expression={ $_.'TimePointBackgroundDetail[OperationStartTime]' }}, @{Name='OperationEndTime'; Expression={ $_.'TimePointBackgroundDetail[OperationEndTime]' }}, @{Name='OperationID'; Expression={ $_.'TimePointBackgroundDetail[OperationId]' }}, @{Name='Sum_CUs'; Expression={ $_.'[Sum_CUs]' }}, @{Name='Sum_Duration'; Expression={ $_.'[Sum_Duration]' }}
+		$Results.results.tables.rows | Select-Object name, @{Name='WorkspaceName'; Expression={ $_.'Items[WorkspaceName]' }}, @{Name='ItemKind'; Expression={ $_.'Items[ItemKind]' }}, @{Name='ItemName'; Expression={ $_.'Items[ItemName]' }}, @{Name='OperationStartTime'; Expression={ $_.'TimePointBackgroundDetail[OperationStartTime]' }}, @{Name='OperationEndTime'; Expression={ $_.'TimePointBackgroundDetail[OperationEndTime]' }}, @{Name='OperationID'; Expression={ $_.'TimePointBackgroundDetail[OperationId]' }}, @{Name='CapacityUnitSeconds'; Expression={ $_.'[Sum_CUs]' }}, @{Name='DurationInSeconds'; Expression={ $_.'[Sum_Duration]' }}
 	}
 
 	# Check capacity metrics at 3 spots to ensure a record is found in capacity metrics throughout the smoothing period (24 horus).
@@ -91,9 +91,9 @@ function Get-FabricCapacityMetrics {
 		$GroupByColumns = $_.name -split ', ';
 		$StartTime = ($_.group | Measure-Object -Property OperationStartTime -Minimum).Minimum;
 		$EndTime = ($_.group | Measure-Object -Property OperationEndTime -Maximum).Maximum;
-		$SumCUs = ($_.group | Measure-Object -Property Sum_CUs -Sum).Sum;
-		$SumDuration = ($_.group | Measure-Object -Property Sum_Duration -Sum).Sum;
-		$CapacityMetrics += [PScustomobject]@{WorkspaceName = $GroupByColumns[0]; ItemKind = $GroupByColumns[1]; ItemName = $GroupByColumns[2]; OperationID = $GroupByColumns[3]; StartTime = $StartTime; EndTime = $EndTime; SumCUs = $SumCUs; SumDuration = $SumDuration}
+		$CapacityUnitSeconds = ($_.group | Measure-Object -Property CapacityUnitSeconds -Sum).Sum;
+		$DurationInSeconds = ($_.group | Measure-Object -Property DurationInSeconds -Sum).Sum;
+		$CapacityMetrics += [PScustomobject]@{WorkspaceName = $GroupByColumns[0]; ItemKind = $GroupByColumns[1]; ItemName = $GroupByColumns[2]; OperationID = $GroupByColumns[3]; StartTime = $StartTime; EndTime = $EndTime; CapacityUnitSeconds = $CapacityUnitSeconds; DurationInSeconds = $DurationInSeconds}
 	}
 
 	$CapacityMetrics
