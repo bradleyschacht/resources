@@ -1,5 +1,10 @@
+$ScenarioID = (New-Guid).ToString()
+
 $Parameters = @{
-    Scenario                   = ''
+    ScenarioID                 = $ScenarioID
+    ScenarioName               = ''
+    BatchName                  = ''
+    BatchDescription           = ''
     WorkspaceName              = ''
     ItemName                   = ''
     CapacitySubscriptionID     = ''
@@ -8,11 +13,12 @@ $Parameters = @{
     CapacitySize               = ''
     Dataset                    = ''
     DataSize                   = ''
-    ThreadCount                = ''
-    IterationCount             = ''
+    DataStorage                = ''
+    ThreadCount                = 1
+    IterationCount             = 1
     QueryDirectory             = ''
-    OutputDirectory            = ''
-    
+    LogDirectory               = ''
+
     CapacityMetricsWorkspace          = ''
     CapacityMetricsSemanticModelName  = 'Fabric Capacity Metrics'
     
@@ -27,6 +33,5 @@ $Parameters = @{
     WaitTimeInSecondsAfterCapacitySkuChange  = 300
     WaitTimeInSecondsAfterCapacityResume     = 60
 }
-
 
 Invoke-FabricBenchmark @Parameters

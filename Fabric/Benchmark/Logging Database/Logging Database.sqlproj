@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="0.2.0-preview" />
+  <PropertyGroup>
+    <Name>Logging Database</Name>
+    <ProjectGuid>{AFC69402-F941-4652-913F-BCFDDD83369D}</ProjectGuid>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlDbFabricDatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="dbo" />
+    <Folder Include="dbo\Stored Procedures" />
+    <Folder Include="reporting" />
+    <Folder Include="reporting\Views" />
+  </ItemGroup>
+  <Target Name="BeforeBuild">
+    <Delete Files="$(BaseIntermediateOutputPath)\project.assets.json" />
+  </Target>
+</Project>
