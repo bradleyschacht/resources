@@ -1,7 +1,7 @@
-DROP VIEW IF EXISTS dbo.vwBatch
+DROP VIEW IF EXISTS dbo.vwIteration
 GO
 
-CREATE VIEW dbo.vwBatch
+CREATE VIEW dbo.vwIteration
 AS
 WITH Batch AS (
 	SELECT
@@ -38,22 +38,28 @@ WITH Batch AS (
 Thread AS (
 	SELECT
 		BatchID,
-		SUM(DurationInMS) AS TotalThreadDurationInMS,
-		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalThreadDuration
+		ThreadID,
+		Thread,
+		StartTime AS ThreadStartTime,
+		EndTime AS ThreadEndTime,
+		DurationInMS AS ThreadDurationInMS,
+		Duration AS ThreadDuration
 	FROM dbo.Thread
-	GROUP BY BatchID
 ),
 Iteration AS (
 	SELECT
-		BatchID,
-		SUM(DurationInMS) AS TotalIterationDurationInMS,
-		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalIterationDuration
+		ThreadID,
+		IterationID,
+		Iteration,
+		StartTime AS IterationStartTime,
+		EndTime AS IterationEndTime,
+		DurationInMS AS IterationDurationInMS,
+		Duration AS IterationDuration
 	FROM dbo.Iteration
-	GROUP BY BatchID
 ),
 Query AS (
 	SELECT
-		BatchID,
+		IterationID,
 		COUNT(*) AS CountOfQueries,
 		SUM(DurationInMS) AS TotalQueryDurationInMS,
 		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalQueryDuration,
@@ -62,11 +68,11 @@ Query AS (
 		SUM(ResultsRecordCount) AS TotalResultsRecordCount,
 		CASE WHEN SUM(CONVERT(INT, HasError)) > 0 THEN 1 ELSE 0 END AS HasError
 	FROM dbo.Query
-	GROUP BY BatchID
+	GROUP BY IterationID
 ),
 Statement AS (
 	SELECT
-		BatchID,
+		IterationID,
 		COUNT(StatementID) AS CountOfStatements,
 		COUNT(QueryInsightsSessionID) AS CountOfStatementsWithQueryInsights,
 		COUNT(CapacityMetricsCapacityUnitSeconds) AS CountOfStatementsWithCapacityMetrics,
@@ -82,14 +88,14 @@ Statement AS (
 		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
 		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
 		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds,
-		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE BatchID = ''', BatchID, '''') AS StatementDetail
+		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE IterationID = ''', IterationID, '''') AS StatementDetail
 	FROM dbo.Statement
 	GROUP BY
-		BatchID
+		IterationID
 )
 
 SELECT
-	ROW_NUMBER() OVER(ORDER BY b.BatchStartTime) AS SortOrder,
+	ROW_NUMBER() OVER(ORDER BY b.BatchStartTime, t.Thread, i.Iteration) AS SortOrder,
 
 	-- Batch
 	b.ScenarioID,
@@ -122,12 +128,20 @@ SELECT
 	b.BatchDuration,
 
 	-- Thread
-	t.TotalThreadDurationInMS,
-	t.TotalThreadDuration,
+	t.ThreadID,
+	t.Thread,
+	t.ThreadStartTime,
+	t.ThreadEndTime,
+	t.ThreadDurationInMS,
+	t.ThreadDuration,
 
 	-- Iteration
-	i.TotalIterationDurationInMS,
-	i.TotalIterationDuration,
+	i.IterationID,
+	i.Iteration,
+	i.IterationStartTime,
+	i.IterationEndTime,
+	i.IterationDurationInMS,
+	i.IterationDuration,
 
 	-- Query
 	q.CountOfQueries,
@@ -159,9 +173,9 @@ FROM Batch AS b
 LEFT JOIN Thread AS t
 	ON b.BatchID = t.BatchID
 LEFT JOIN Iteration AS i
-	ON t.BatchID = i.BatchID
+	ON t.ThreadID = i.ThreadID
 LEFT JOIN Query AS q
-	ON t.BatchID = q.BatchID
+	ON i.IterationID = q.IterationID
 LEFT JOIN Statement AS s
-	ON i.BatchID = s.BatchID
+	ON i.IterationID = s.IterationID
 GO

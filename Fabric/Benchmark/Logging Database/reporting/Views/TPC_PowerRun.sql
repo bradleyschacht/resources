@@ -13,43 +13,39 @@ BatchList AS (
 		AND BatchName IN ('Power Run')
 ), Combined AS (
 	SELECT
-		q.BatchID,
-		q.ThreadID,
+		BatchID,
+		ThreadID,
 
 		NULL AS HasError,
 		NULL AS HasWarning,
 
-		SUM(q.DurationInMS) AS DurationInMS,
-		SUM(CASE WHEN Iteration = 1 THEN q.DurationInMS ELSE 0 END) AS Iteration1_DurationInMS,
-		SUM(CASE WHEN Iteration = 2 THEN q.DurationInMS ELSE 0 END) AS Iteration2_DurationInMS,
-		SUM(CASE WHEN Iteration = 3 THEN q.DurationInMS ELSE 0 END) AS Iteration3_DurationInMS,
-		SUM(CASE WHEN Iteration = 4 THEN q.DurationInMS ELSE 0 END) AS Iteration4_DurationInMS,
+		SUM(QueryDurationInMS) AS DurationInMS,
+		SUM(CASE WHEN Iteration = 1 THEN QueryDurationInMS ELSE 0 END) AS Iteration1_DurationInMS,
+		SUM(CASE WHEN Iteration = 2 THEN QueryDurationInMS ELSE 0 END) AS Iteration2_DurationInMS,
+		SUM(CASE WHEN Iteration = 3 THEN QueryDurationInMS ELSE 0 END) AS Iteration3_DurationInMS,
+		SUM(CASE WHEN Iteration = 4 THEN QueryDurationInMS ELSE 0 END) AS Iteration4_DurationInMS,
 
-		SUM(q.DurationInMS/1000.) AS DurationInS,
-		SUM(CASE WHEN Iteration = 1 THEN q.DurationInMS/1000. ELSE 0 END) AS Iteration1_DurationInS,
-		SUM(CASE WHEN Iteration = 2 THEN q.DurationInMS/1000. ELSE 0 END) AS Iteration2_DurationInS,
-		SUM(CASE WHEN Iteration = 3 THEN q.DurationInMS/1000. ELSE 0 END) AS Iteration3_DurationInS,
-		SUM(CASE WHEN Iteration = 4 THEN q.DurationInMS/1000. ELSE 0 END) AS Iteration4_DurationInS,
+		SUM(QueryDurationInMS/1000.) AS DurationInS,
+		SUM(CASE WHEN Iteration = 1 THEN QueryDurationInMS/1000. ELSE 0 END) AS Iteration1_DurationInS,
+		SUM(CASE WHEN Iteration = 2 THEN QueryDurationInMS/1000. ELSE 0 END) AS Iteration2_DurationInS,
+		SUM(CASE WHEN Iteration = 3 THEN QueryDurationInMS/1000. ELSE 0 END) AS Iteration3_DurationInS,
+		SUM(CASE WHEN Iteration = 4 THEN QueryDurationInMS/1000. ELSE 0 END) AS Iteration4_DurationInS,
 
-		SUM(q.CapacityMetricsCUs) AS CapacityMetricsCUs,
-		SUM(CASE WHEN Iteration = 1 THEN q.CapacityMetricsCUs ELSE 0 END) AS Iteration1_CapacityMetricsCUs,
-		SUM(CASE WHEN Iteration = 2 THEN q.CapacityMetricsCUs ELSE 0 END) AS Iteration2_CapacityMetricsCUs,
-		SUM(CASE WHEN Iteration = 3 THEN q.CapacityMetricsCUs ELSE 0 END) AS Iteration3_CapacityMetricsCUs,
-		SUM(CASE WHEN Iteration = 4 THEN q.CapacityMetricsCUs ELSE 0 END) AS Iteration4_CapacityMetricsCUs,
+		SUM(TotalCapacityMetricsCapacityUnitSeconds) AS CapacityMetricsCUs,
+		SUM(CASE WHEN Iteration = 1 THEN TotalCapacityMetricsCapacityUnitSeconds ELSE 0 END) AS Iteration1_CapacityMetricsCUs,
+		SUM(CASE WHEN Iteration = 2 THEN TotalCapacityMetricsCapacityUnitSeconds ELSE 0 END) AS Iteration2_CapacityMetricsCUs,
+		SUM(CASE WHEN Iteration = 3 THEN TotalCapacityMetricsCapacityUnitSeconds ELSE 0 END) AS Iteration3_CapacityMetricsCUs,
+		SUM(CASE WHEN Iteration = 4 THEN TotalCapacityMetricsCapacityUnitSeconds ELSE 0 END) AS Iteration4_CapacityMetricsCUs,
 
-		SUM(q.CapacityMetricsQueryPrice) AS CapacityMetricsQueryPrice,
-		SUM(CASE WHEN Iteration = 1 THEN q.CapacityMetricsQueryPrice ELSE 0 END) AS Iteration1_CapacityMetricsQueryPrice,
-		SUM(CASE WHEN Iteration = 2 THEN q.CapacityMetricsQueryPrice ELSE 0 END) AS Iteration2_CapacityMetricsQueryPrice,
-		SUM(CASE WHEN Iteration = 3 THEN q.CapacityMetricsQueryPrice ELSE 0 END) AS Iteration3_CapacityMetricsQueryPrice,
-		SUM(CASE WHEN Iteration = 4 THEN q.CapacityMetricsQueryPrice ELSE 0 END) AS Iteration4_CapacityMetricsQueryPrice
-	FROM dbo.vwQuery AS q
-	INNER JOIN dbo.Batch AS b
-		ON q.BatchID = b.BatchID
-	INNER JOIN dbo.Iteration AS i
-		ON q.IterationID = i.IterationID
+		SUM(TotalCapacityMetricsOperationCost) AS CapacityMetricsQueryPrice,
+		SUM(CASE WHEN Iteration = 1 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration1_CapacityMetricsQueryPrice,
+		SUM(CASE WHEN Iteration = 2 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration2_CapacityMetricsQueryPrice,
+		SUM(CASE WHEN Iteration = 3 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration3_CapacityMetricsQueryPrice,
+		SUM(CASE WHEN Iteration = 4 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration4_CapacityMetricsQueryPrice
+	FROM dbo.vwQuery
 	GROUP BY
-		q.BatchID,
-		q.ThreadID
+		BatchID,
+		ThreadID
 )
 
 	SELECT

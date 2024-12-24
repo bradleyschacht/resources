@@ -514,35 +514,43 @@ function Invoke-FabricBenchmark {
                             "Status"                    = $(if ($false -eq $QuerySuccessful) {"Failure"} elseif ($true -eq $QuerySuccessful -and -$RetryCount -gt 0) {"Success after retry"} elseif ($true -eq $QuerySuccessful -and $RetryCount -eq 0) {"Success"} else {"Unknown Status"})
                             "StartTime"                 = $(if ($true -eq $QuerySuccessful) {"{0}" -f $QueryOutput.QueryStartTime})
                             "EndTime"                   = $(if ($true -eq $QuerySuccessful) {"{0}" -f $QueryOutput.QueryEndTime})
+                            "DurationInMS"              = $(if ($true -eq $QuerySuccessful) {[long]($QueryOutput.QueryEndTime - $QueryOutput.QueryStartTime).TotalMilliseconds})
+                            "Duration"                  = $(if ($true -eq $QuerySuccessful) {"{0}" -f ($QueryOutput.QueryEndTime - $QueryOutput.QueryStartTime).ToString("hh\:mm\:ss\.ffffff")})
                             "DistributedStatementCount" = $DistributedStatementCount
                             "RetryCount"                = $RetryCount
                             "RetryLimit"                = $RetryLimit
                             "ResultsRecordCount"        = $QueryOutput.Dataset.Tables.Rows.Count
-                            "Errors"                    = $(if ($false -eq $QuerySuccessful -or $RetryCount -gt 0) {$true} else {$true})
+                            "HasError"                  = $(if ($false -eq $QuerySuccessful -or $RetryCount -gt 0) {$true} else {$false})
                             "Command"                   = $Query
                             "QueryMessage"              = $(if ($true -eq $QuerySuccessful) {$QueryOutput.Messages})
                         }
                     }
 
                     # Add the message to the log.
+                    $IterationEndTime = Get-Date
                     $LocalLogIteration[$IterationID] = @{
-                        "IterationID" = $IterationID
-                        "BatchID"     = $BatchID
-                        "ThreadID"    = $ThreadID
-                        "Iteration"   = $Iteration
-                        "StartTime"   = $IterationStartTime
-                        "EndTime"     = $(Get-Date)
+                        "IterationID"   = $IterationID
+                        "BatchID"       = $BatchID
+                        "ThreadID"      = $ThreadID
+                        "Iteration"     = $Iteration
+                        "StartTime"     = $IterationStartTime
+                        "EndTime"       = $IterationEndTime
+                        "DurationInMS"  = $([long]($IterationEndTime - $IterationStartTime).TotalMilliseconds)
+                        "Duration"      = $("{0}" -f ($IterationEndTime - $IterationStartTime).ToString("hh\:mm\:ss\.ffffff"))
                     }
                     Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("Iteration {0} of {1} has ended." -f $Iteration, $IterationCount)
                 }
 
                 # Add the message to the log.
+                $ThreadEndTime = Get-Date
                 $LocalLogThread[$ThreadID] = @{
-                    "ThreadID"  = $ThreadID
-                    "BatchID"   = $BatchID
-                    "Thread"    = $Thread
-                    "StartTime" = $ThreadStartTime
-                    "EndTime"   = $(Get-Date)
+                    "ThreadID"      = $ThreadID
+                    "BatchID"       = $BatchID
+                    "Thread"        = $Thread
+                    "StartTime"     = $ThreadStartTime
+                    "EndTime"       = $ThreadEndTime
+                    "DurationInMS"  = $([long]($ThreadEndTime - $ThreadStartTime).TotalMilliseconds)
+                    "Duration"      = $("{0}" -f ($ThreadEndTime - $ThreadStartTime).ToString("hh\:mm\:ss\.ffffff"))
                 }
 
                 Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has ended." -f $Thread, $ThreadCount)
@@ -586,6 +594,8 @@ function Invoke-FabricBenchmark {
 
         Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("All threads have been cleaned up.")       
         
+        $BatchEndTime = Get-Date
+        
         $LogBatch = @{
             "ScenarioID"                = $ScenarioID
             "ScenarioName"              = $ScenarioName
@@ -612,7 +622,9 @@ function Invoke-FabricBenchmark {
             "DataSize"                  = $DataSize
             "DataStorage"               = $DataStorage
             "StartTime"                 = $BatchStartTime
-            "EndTime"                   = $(Get-Date)
+            "EndTime"                   = $BatchEndTime
+            "DurationInMS"              = $([long]($BatchEndTime - $BatchStartTime).TotalMilliseconds)
+            "Duration"                  = $("{0}" -f ($BatchEndTime - $BatchStartTime).ToString("hh\:mm\:ss\.ffffff"))
         }
     }
 

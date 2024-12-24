@@ -7,6 +7,8 @@ CREATE TABLE [dbo].[Thread] (
     [Thread]             INT            NULL,
     [StartTime]          DATETIME2 (6)  NULL,
     [EndTime]            DATETIME2 (6)  NULL,
+    [DurationInMS]       BIGINT          NULL,
+    [Duration]           TIME (6)        NULL,
     [CreateTime]         DATETIME2 (6)  NULL,
     [LastUpdateTime]     DATETIME2 (6)  NULL
 )

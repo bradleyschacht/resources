@@ -1,7 +1,7 @@
-DROP VIEW IF EXISTS dbo.vwQuery
+DROP VIEW IF EXISTS dbo.vwStatement
 GO
 
-CREATE VIEW dbo.vwQuery
+CREATE VIEW dbo.vwStatement
 AS
 WITH Batch AS (
 	SELECT
@@ -81,29 +81,36 @@ Query AS (
 Statement AS (
 	SELECT
 		QueryID,
-		COUNT(StatementID) AS CountOfStatements,
-		COUNT(QueryInsightsSessionID) AS CountOfStatementsWithQueryInsights,
-		COUNT(CapacityMetricsCapacityUnitSeconds) AS CountOfStatementsWithCapacityMetrics,
-		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), DistributedStatementID), ''), ', ') AS DistributedStatementID,
-		SUM(QueryInsightsDurationInMS) AS TotalQueryInsightsDurationInMS,
-		SUM(QueryInsightsAllocatedCPUTimeMS) AS TotalQueryInsightsAllocatedCPUTimeMS,
-		SUM(QueryInsightsDataScannedRemoteStorageMB) AS TotalQueryInsightsDataScannedRemoteStorageMB,
-		SUM(QueryInsightsDataScannedMemoryMB) AS TotalQueryInsightsDataScannedMemoryMB,
-		SUM(QueryInsightsDataScannedDiskMB) AS TotalQueryInsightsDataScannedDiskMB,
-		SUM(QueryInsightsRowCount) AS TotalQueryInsightsRowCount,
-		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsStatus), ''), ', ') AS QueryInsightsStatus,
-		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsLabel), ''), ', ') AS QueryInsightsLabel,
-		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
-		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
-		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds,
-		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE QueryID = ''', QueryID, '''') AS StatementDetail
+		StatementID,
+		StatementMessage,
+		DistributedStatementID,
+		DistributedRequestID,
+		QueryHash,
+		QueryInsightsSessionID,
+		QueryInsightsLoginName,
+		QueryInsightsSubmitTime,
+		QueryInsightsStartTime,
+		QueryInsightsEndTime,
+		QueryInsightsDurationInMS,
+		QueryInsightsAllocatedCPUTimeMS,
+		QueryInsightsDataScannedRemoteStorageMB,
+		QueryInsightsDataScannedMemoryMB,
+		QueryInsightsDataScannedDiskMB,
+		QueryInsightsRowCount,
+		QueryInsightsStatus,
+		QueryInsightsResultCacheHit,
+		QueryInsightsLabel,
+		QueryInsightsCommand,
+		CapacityMetricsStartTime,
+		CapacityMetricsEndTime,
+		CapacityMetricsCapacityUnitSeconds,
+		CapacityMetricsOperationCost,
+		CapacityMetricsDurationInSeconds
 	FROM dbo.Statement
-	GROUP BY
-		QueryID
 )
 
 SELECT
-	ROW_NUMBER() OVER(ORDER BY b.BatchStartTime, t.Thread, i.Iteration, q.Sequence) AS SortOrder,
+	ROW_NUMBER() OVER(ORDER BY b.BatchStartTime, t.Thread, i.Iteration, q.Sequence, ISNULL(s.QueryInsightsStartTime, s.CapacityMetricsStartTime)) AS SortOrder,
 
 	-- Batch
 	b.ScenarioID,
@@ -170,22 +177,31 @@ SELECT
 	q.QueryMessage,
 
 	-- Statement
-	s.CountOfStatements,
-	s.CountOfStatementsWithQueryInsights,
-	s.CountOfStatementsWithCapacityMetrics,
+	s.StatementID,
+	s.StatementMessage,
 	s.DistributedStatementID,
-	s.TotalQueryInsightsDurationInMS,
-	s.TotalQueryInsightsAllocatedCPUTimeMS,
-	s.TotalQueryInsightsDataScannedRemoteStorageMB,
-	s.TotalQueryInsightsDataScannedMemoryMB,
-	s.TotalQueryInsightsDataScannedDiskMB,
-	s.TotalQueryInsightsRowCount,
+	s.DistributedRequestID,
+	s.QueryHash,
+	s.QueryInsightsSessionID,
+	s.QueryInsightsLoginName,
+	s.QueryInsightsSubmitTime,
+	s.QueryInsightsStartTime,
+	s.QueryInsightsEndTime,
+	s.QueryInsightsDurationInMS,
+	s.QueryInsightsAllocatedCPUTimeMS,
+	s.QueryInsightsDataScannedRemoteStorageMB,
+	s.QueryInsightsDataScannedMemoryMB,
+	s.QueryInsightsDataScannedDiskMB,
+	s.QueryInsightsRowCount,
 	s.QueryInsightsStatus,
+	s.QueryInsightsResultCacheHit,
 	s.QueryInsightsLabel,
-	s.TotalCapacityMetricsCapacityUnitSeconds,
-	s.TotalCapacityMetricsOperationCost,
-	s.TotalCapacityMetricsDurationInSeconds,
-	s.StatementDetail
+	s.QueryInsightsCommand,
+	s.CapacityMetricsStartTime,
+	s.CapacityMetricsEndTime,
+	s.CapacityMetricsCapacityUnitSeconds,
+	s.CapacityMetricsOperationCost,
+	s.CapacityMetricsDurationInSeconds
 FROM Batch AS b
 LEFT JOIN Thread AS t
 	ON b.BatchID = t.BatchID

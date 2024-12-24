@@ -21,13 +21,15 @@ CREATE TABLE [dbo].[Batch] (
 	[CapacitySubscriptionID]      NVARCHAR (200)  NULL,
     [CapacityResourceGroupName]   NVARCHAR (200)  NULL,
     [CapacitySize]                NVARCHAR (200)  NULL,
-    [CapacityCUPricePerHour]      DECIMAL (10, 2) NULL,
+    [CapacityUnitPricePerHour]    DECIMAL (10, 2) NULL,
     [CapacityRegion]              NVARCHAR (200)  NULL,
     [Dataset]                     NVARCHAR (200)  NULL,
     [DataSize]                    NVARCHAR (200)  NULL,
     [DataStorage]                 NVARCHAR (200)  NULL,
     [StartTime]                   DATETIME2 (6)   NULL,
     [EndTime]                     DATETIME2 (6)   NULL,
+    [DurationInMS]                BIGINT          NULL,
+    [Duration]                    TIME (6)        NULL,
     [CreateTime]                  DATETIME2 (6)   NULL,
 	[LastUpdateTime]              DATETIME2 (6)   NULL
 )
