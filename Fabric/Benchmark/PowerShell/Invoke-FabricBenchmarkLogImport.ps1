@@ -14,6 +14,7 @@ function Invoke-FabricBenchmarkLogImport {
     
     # If specified, create the archive directory and set the variables to archive after load. 
     $Archive = $false
+    $LogFound = $false
     
     # Create the archive directory if it does not exist. 
     if($ArchiveDirectory -ne "") {
@@ -32,7 +33,7 @@ function Invoke-FabricBenchmarkLogImport {
 
     # Populate the directory list variable depending on if a parent or log directory was provided.
     if (Get-ChildItem -Path $LogDirectory -Directory) {
-        $LogDirectoryList = Get-ChildItem -Path $LogDirectory -Directory
+        $LogDirectoryList = Get-ChildItem -Path $LogDirectory -Directory -Exclude $(if ($ArchiveDirectory -ne "") {Split-Path $ArchiveDirectory -Leaf} else {""})
     } else {
         $LogDirectoryList = Get-Item -Path $LogDirectory
     }
@@ -68,6 +69,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("BatchLog", ($Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Batch log not found at {0}" -f $BatchLogPath) -ForegroundColor Red
@@ -80,6 +82,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("ThreadLog", ($_.$Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Thread log not found at {0}" -f $ThreadLogPath) -ForegroundColor Red
@@ -92,6 +95,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("IterationLog", ($_.$Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Iteration log not found at {0}" -f $IterationLogPath) -ForegroundColor Red
@@ -104,6 +108,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("QueryLog", ($_.$Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Query log not found at {0}" -f $QueryLogPath) -ForegroundColor Red
@@ -116,6 +121,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("StatementLog", ($_.$Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Statement log not found at {0}" -f $StatementLogPath) -ForegroundColor Red
@@ -128,6 +134,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("QueryInsights", ($Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Query insights not found at {0}" -f $QueryInsightsPath) -ForegroundColor Red
@@ -140,6 +147,7 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("CapacityMetrics", ($Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Capacity Metrics not found at {0}" -f $CapacityMetricsPath) -ForegroundColor Red
@@ -152,77 +160,29 @@ function Invoke-FabricBenchmarkLogImport {
                     [void]$LogImport.Rows.Add("QueryError", ($_.$Log | ConvertTo-Json));
                 }
             }
+            $LogFound = $true
         }
         else {
             Write-Host ("Query error log not found at {0}" -f $QueryErrorPath) -ForegroundColor Red
         }
     
-        # Load the data to the SQL database.
-        $QueryOutput = $null
-        $ClearLogImportSuccessful = $false
-        $QueryOutput = Invoke-FabricSqlCommand -Server $Server -Database $Database -Query "
-        DROP TABLE IF EXISTS dbo.LogImport;
-        
-        CREATE TABLE dbo.LogImport (
-            LogType      [VARCHAR](25),
-            LogContent   [JSON]
-        )"
-        
-        # Check the query output for errors. 
-        if ($QueryOutput.Errors.Count -gt 0) {
-            Write-Host "an error occurred while clearing the log import table."
-            Write-Host "An error was found when parsing the query error output." -ForegroundColor Red
-        
-            # Combine the messages and errors into a single output for logging.
-            $FullOutput = @()
-            ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
-                $FullOutput += $Line + "`r`n"
-            }
-            ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
-                $FullOutput += $Line + "`r`n"
-            }
-        
-            throw ($FullOutput)
-        }
-        else {
-            $ClearLogImportSuccessful = $true
-        }
-        
-        if ($true -eq $ClearLogImportSuccessful) {
-            try {
-                $ConnectionStringBuilder = New-Object -TypeName System.Data.SqlClient.SqlConnectionStringBuilder
-                $ConnectionStringBuilder["Server"] = $Server
-                $ConnectionStringBuilder["Database"] = $Database
-                $ConnectionStringBuilder["Connection Timeout"] = 60
-                $ConnectionString = $ConnectionStringBuilder.ToString()
-                
-                $Connection = New-Object System.Data.SqlClient.SQLConnection($ConnectionString)
-                $Connection.ConnectionString = $ConnectionString
-                $Connection.AccessToken = Get-FabricAccessToken "SQL"
-                $Connection.Open()
-                
-                $BulkCopy = New-Object -TypeName System.Data.SqlClient.SqlBulkCopy $Connection
-                $BulkCopy.DestinationTableName = "dbo.LogImport"
-                $BulkCopy.WriteToServer($LogImport)
-            }
-            catch {
-                throw($_.Exception)
-            }
-        
-            $LogImportSuccessful = $true
-            Write-Host "Log data imported successfully."
-        }
-        
-        if ($true -eq $LogImportSuccessful) {
+        # Load the data to the SQL database if at least one log was found.
+        if ($LogFound) {
             $QueryOutput = $null
-            
-            # Process the log data
-            $QueryOutput = Invoke-FabricSqlCommand -Server $Server -Database $Database -Query "EXEC dbo.ProcessLogImportData"
-        
+            $ClearLogImportSuccessful = $false
+            $QueryOutput = Invoke-FabricSqlCommand -Server $Server -Database $Database -Query "
+            DROP TABLE IF EXISTS dbo.LogImport;
+
+            CREATE TABLE dbo.LogImport (
+                LogType      [VARCHAR](25),
+                LogContent   [JSON]
+            )"
+
             # Check the query output for errors. 
             if ($QueryOutput.Errors.Count -gt 0) {
+                Write-Host "an error occurred while clearing the log import table."
                 Write-Host "An error was found when parsing the query error output." -ForegroundColor Red
-        
+
                 # Combine the messages and errors into a single output for logging.
                 $FullOutput = @()
                 ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
@@ -231,21 +191,72 @@ function Invoke-FabricBenchmarkLogImport {
                 ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
                     $FullOutput += $Line + "`r`n"
                 }
-        
+
                 throw ($FullOutput)
             }
             else {
-                Write-Host "Log data processed successfully."
+                $ClearLogImportSuccessful = $true
             }
-        }
 
-        if ($true -eq $Archive) {
-            if (Test-Path $ArchiveDirectory) {
-                Move-Item -Path $CurrentLog.FullName -Destination $ArchiveDirectory
-                Write-Host "Log data archived successfully."
+            if ($true -eq $ClearLogImportSuccessful) {
+                try {
+                    $ConnectionStringBuilder = New-Object -TypeName System.Data.SqlClient.SqlConnectionStringBuilder
+                    $ConnectionStringBuilder["Server"] = $Server
+                    $ConnectionStringBuilder["Database"] = $Database
+                    $ConnectionStringBuilder["Connection Timeout"] = 60
+                    $ConnectionString = $ConnectionStringBuilder.ToString()
+                    
+                    $Connection = New-Object System.Data.SqlClient.SQLConnection($ConnectionString)
+                    $Connection.ConnectionString = $ConnectionString
+                    $Connection.AccessToken = Get-FabricAccessToken "SQL"
+                    $Connection.Open()
+                    
+                    $BulkCopy = New-Object -TypeName System.Data.SqlClient.SqlBulkCopy $Connection
+                    $BulkCopy.DestinationTableName = "dbo.LogImport"
+                    $BulkCopy.WriteToServer($LogImport)
+                }
+                catch {
+                    throw($_.Exception)
+                }
+
+                $LogImportSuccessful = $true
+                Write-Host "Log data imported successfully."
             }
-        }
 
-        Write-Host ("Log data processing has completed.")
+            if ($true -eq $LogImportSuccessful) {
+                $QueryOutput = $null
+                
+                # Process the log data
+                $QueryOutput = Invoke-FabricSqlCommand -Server $Server -Database $Database -Query "EXEC dbo.ProcessLogImportData"
+
+                # Check the query output for errors. 
+                if ($QueryOutput.Errors.Count -gt 0) {
+                    Write-Host "An error was found when parsing the query error output." -ForegroundColor Red
+
+                    # Combine the messages and errors into a single output for logging.
+                    $FullOutput = @()
+                    ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
+                        $FullOutput += $Line + "`r`n"
+                    }
+                    ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
+                        $FullOutput += $Line + "`r`n"
+                    }
+
+                    throw ($FullOutput)
+                }
+                else {
+                    Write-Host "Log data processed successfully."
+                }
+            }
+
+            if ($true -eq $Archive) {
+                if (Test-Path $ArchiveDirectory) {
+                    Move-Item -Path $CurrentLog.FullName -Destination $ArchiveDirectory
+                    Write-Host "Log data archived successfully."
+                }
+            }
+
+            Write-Host ("Log data processing has completed.")
+        }
     }
 }

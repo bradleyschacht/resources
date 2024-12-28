@@ -325,6 +325,14 @@ function Invoke-FabricBenchmark {
                 $ThreadID = (New-Guid).ToString()
                 $ThreadStartTime = Get-Date
 
+                # Add the message to the log.
+                $LocalLogThread[$ThreadID] = @{
+                    "ThreadID"      = $ThreadID
+                    "BatchID"       = $BatchID
+                    "Thread"        = $Thread
+                    "StartTime"     = $ThreadStartTime
+                }
+
                 # Create the local log variable references for the synchronized hashtables.
                 $LocalThreadStatus = $using:ThreadStatus
                 $LocalLog = $using:Log
@@ -353,6 +361,17 @@ function Invoke-FabricBenchmark {
                     # Generate an iteration id and store the start time.
                     $IterationID = (New-Guid).ToString()
                     $IterationStartTime = Get-Date
+
+                    # Add the message to the log.
+                    $LocalLogIteration[$IterationID] = @{
+                        "IterationID"   = $IterationID
+                        "BatchID"       = $BatchID
+                        "ThreadID"      = $ThreadID
+                        "Iteration"     = $Iteration
+                        "StartTime"     = $IterationStartTime
+                    }
+
+                    Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("Iteration {0} of {1} has ended." -f $Iteration, $IterationCount)
                     
                     Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("Iteration {0} of {1} has started." -f $Iteration, $IterationCount)
                     
@@ -526,7 +545,7 @@ function Invoke-FabricBenchmark {
                         }
                     }
 
-                    # Add the message to the log.
+                    # Update the message in the log.
                     $IterationEndTime = Get-Date
                     $LocalLogIteration[$IterationID] = @{
                         "IterationID"   = $IterationID
@@ -541,7 +560,7 @@ function Invoke-FabricBenchmark {
                     Add-LogEntry -Thread $Thread -Iteration $Iteration -MessageType "Information" -MessageText ("Iteration {0} of {1} has ended." -f $Iteration, $IterationCount)
                 }
 
-                # Add the message to the log.
+                # Update the message in the log.
                 $ThreadEndTime = Get-Date
                 $LocalLogThread[$ThreadID] = @{
                     "ThreadID"      = $ThreadID
@@ -575,7 +594,7 @@ function Invoke-FabricBenchmark {
                     Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("The thread {0} has been stopped." -f $job.Name)
         
                     <#
-                        Notes for later: Put a script here to go add a record for all threads that were terminated.
+                        Notes for later: Put a script here to go add the end date for all threads that were terminated.
                     #>
                 }
             }
