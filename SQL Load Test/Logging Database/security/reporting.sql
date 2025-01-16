@@ -1,4 +1,4 @@
 CREATE SCHEMA [reporting]
-    AUTHORIZATION [dbo]
+    AUTHORIZATION [dbo];
 GO
 

@@ -10,10 +10,34 @@ BatchList AS (
 	FROM dbo.Batch
 	WHERE
 		Dataset IN ('TPC-H', 'TPCH', 'TPC-DS', 'TPCDS')
-		AND BatchName IN ('Power Run')
+		AND ThreadCount = 1
+		AND IterationCount = 4
 ), Combined AS (
 	SELECT
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		CASE DatabaseCollation
+			WHEN 'Latin1_General_100_CI_AS_KS_WS_SC_UTF8' THEN 'Case Insensitive'
+			WHEN 'Latin1_General_100_BIN2_UTF8' THEN 'Case Sensitive'
+			ELSE CONCAT('Unknown - ', DatabaseCollation)
+			END AS DatabaseCaseSensitive,
+		CASE
+			DatabaseIsVOrderEnabled
+			WHEN 1 THEN 'VOrder Enabled'
+			WHEN 0 THEN 'VOrder Disabled'
+			ELSE 'VOrder Setting Unknown'
+			END AS DatabaseVOrder,
 		ThreadID,
 
 		NULL AS HasError,
@@ -43,13 +67,43 @@ BatchList AS (
 		SUM(CASE WHEN Iteration = 3 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration3_CapacityMetricsQueryPrice,
 		SUM(CASE WHEN Iteration = 4 THEN TotalCapacityMetricsOperationCost ELSE 0 END) AS Iteration4_CapacityMetricsQueryPrice
 	FROM dbo.vwQuery
+	WHERE BatchID IN (SELECT BatchID FROM BatchList)
 	GROUP BY
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCollation,
+		DatabaseIsVOrderEnabled,
 		ThreadID
 )
 
 	SELECT
+		CONCAT(Dataset, ' | ', DataSize, ' | ', CapacitySize, ' | ', ItemType, ' | ', DataStorage, ' | ', DatabaseCaseSensitive, ' | ', DatabaseVOrder) AS PowerRunDescription,
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCaseSensitive,
+		DatabaseVOrder,
 		ThreadID,
 		HasError,
 		HasWarning,
@@ -68,7 +122,22 @@ BatchList AS (
 	UNION ALL
 
 	SELECT
+		CONCAT(Dataset, ' | ', DataSize, ' | ', CapacitySize, ' | ', ItemType, ' | ', DataStorage, ' | ', DatabaseCaseSensitive, ' | ', DatabaseVOrder) AS PowerRunDescription,
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCaseSensitive,
+		DatabaseVOrder,
 		ThreadID,
 		HasError,
 		HasWarning,
@@ -86,7 +155,22 @@ BatchList AS (
 	UNION ALL
 
 	SELECT
+		CONCAT(Dataset, ' | ', DataSize, ' | ', CapacitySize, ' | ', ItemType, ' | ', DataStorage, ' | ', DatabaseCaseSensitive, ' | ', DatabaseVOrder) AS PowerRunDescription,
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCaseSensitive,
+		DatabaseVOrder,
 		ThreadID,
 		HasError,
 		HasWarning,
@@ -104,7 +188,22 @@ BatchList AS (
 	UNION ALL
 
 	SELECT
+		CONCAT(Dataset, ' | ', DataSize, ' | ', CapacitySize, ' | ', ItemType, ' | ', DataStorage, ' | ', DatabaseCaseSensitive, ' | ', DatabaseVOrder) AS PowerRunDescription,
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCaseSensitive,
+		DatabaseVOrder,
 		ThreadID,
 		HasError,
 		HasWarning,
@@ -122,7 +221,22 @@ BatchList AS (
 	UNION ALL
 
 	SELECT
+		CONCAT(Dataset, ' | ', DataSize, ' | ', CapacitySize, ' | ', ItemType, ' | ', DataStorage, ' | ', DatabaseCaseSensitive, ' | ', DatabaseVOrder) AS PowerRunDescription,
+		ScenarioName,
+		ScenarioID,
+		BatchName,
+		BatchDescription,
 		BatchID,
+		BatchStartTime,
+		Dataset,
+		DataSize,
+		DataStorage,
+		CapacitySize,
+		WorkspaceName,
+		ItemName,
+		ItemType,
+		DatabaseCaseSensitive,
+		DatabaseVOrder,
 		ThreadID,
 		HasError,
 		HasWarning,
