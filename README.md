@@ -1,1 +1,1 @@
-# resourcesv2
+# resources
