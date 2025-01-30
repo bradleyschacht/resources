@@ -29,10 +29,10 @@ $Parameters = @{
     StoreQueryResults                        = $false
     BatchTimeoutInMinutes                    = 120
     QueryRetryLimit                          = 0
+    WaitTimeInMinutesAfterCapacityResume     = 1
+    WaitTimeInMinutesAfterCapacitySkuChange  = 5
     WaitTimeInMinutesForQueryInsightsData    = 15
     WaitTimeInMinutesForCapacityMetricsData  = 15
-    WaitTimeInSecondsAfterCapacitySkuChange  = 300
-    WaitTimeInSecondsAfterCapacityResume     = 60
 }
 
 Invoke-SqlLoadTest @Parameters

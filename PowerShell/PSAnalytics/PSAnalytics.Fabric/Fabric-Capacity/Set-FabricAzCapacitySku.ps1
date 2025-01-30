@@ -6,7 +6,7 @@ function Set-FabricAzCapacitySku {
         [Parameter(Mandatory = $true)] [string] $CapacityName,
         [Parameter(Mandatory = $true)] [ValidateSet("F2", "F4", "F8", "F16", "F32", "F64", "F128", "F256", "F512", "F1024", "F2048")] [string] $Sku,
         [Parameter(Mandatory = $false)] [string] $AccessToken,
-        [Parameter(Mandatory = $false)] [string] $APIVersion = "2022-07-01-preview"
+        [Parameter(Mandatory = $false)] [string] $APIVersion = "2023-11-01"
     )
 
     if ([string]::IsNullOrEmpty($AccessToken)) { 
@@ -36,13 +36,14 @@ function Set-FabricAzCapacitySku {
                 }
             } until (
                 $Capacity.sku.name -eq $Sku
-            )        }
+            )
+        }
         catch {
-            $_
+            throw $_
         }
     }
     else {
-        Write-Host "Capacity in an unknown state."
+        throw "Capacity in an unknown state."
     }
 
     $Capacity

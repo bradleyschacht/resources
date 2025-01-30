@@ -6,7 +6,9 @@ function Invoke-FabricRestMethod {
         [Parameter(Mandatory = $false)] [string] $Body,
         [Parameter(Mandatory = $false)] [string] $AccessToken,
         [Parameter(Mandatory = $false)] [int] $ConnectionTimeoutSeconds = 120,
-        [Parameter(Mandatory = $false)] [int] $OperationTimeoutSeconds = 120
+        [Parameter(Mandatory = $false)] [int] $OperationTimeoutSeconds = 120,
+        [Parameter(Mandatory = $false)] [switch] $Async,
+        [Parameter(Mandatory = $false)] [switch] $Raw
     )
 
     if ([string]::IsNullOrEmpty($AccessToken)) { 
@@ -28,36 +30,62 @@ function Invoke-FabricRestMethod {
             Write-Host ("Status code 429 (Too many requests). Retrying in {0} seconds..." -f $RetryAfter) -BackgroundColor "Black" -ForegroundColor "Yellow"
             
             Start-Sleep -Seconds $RetryAfter
-        } else {
+        }         
+        else {
             throw $_.Exception.Response
         }
     }
 
-    if ($Response.StatusCode -eq 200) {
-        if ($Response.Content) {
-            $Response.Content | ConvertFrom-Json
-        }
-    }
-
-    elseif ($Response.StatusCode -eq 202) {
-        $StatusLocation = ($Response.Headers.Location | Out-String)
-
-        if ($StatusLocation -ne "" -and $null -ne $StatusLocation) {
-            
-            do {
-                $Status = (Invoke-FabricRestMethod -Uri $StatusLocation -Method GET).status
-                Write-Host ("The current status is {0}" -f $Status)
-
-                if ($Status -eq "Running") {
-                    Start-Sleep -Seconds 5
-                }
-            } while ($Status -eq "Running")
-        }
-
+    if($Raw) {
         $Response
     }
 
     else {
-        $Response
-    }
+        if ($Response.StatusCode -eq 200) {
+            if ($Response.Content) {
+                $Response.Content | ConvertFrom-Json
+            }
+        }
+    
+        elseif ($Response.StatusCode -eq 202) {
+            $StatusLocation = ($Response.Headers.Location | Out-String)
+    
+            if ($StatusLocation -ne "" -and $null -ne $StatusLocation) {
+
+                do {
+                    $StatusResponse = Invoke-FabricRestMethod -Uri $StatusLocation -Method GET -AccessToken $AccessToken -Raw
+                    
+                    if ($StatusResponse.StatusCode -eq 202) {
+                        $Status = "Running"
+                    }
+
+                    elseif ($StatusResponse.StatusCode -eq 200) {
+                        if ($StatusResponse.status) {
+                            $Status = $StatusResponse.status
+                        }
+
+                        else {
+                            $Status = "Complete"
+                        }
+                    }
+
+                    else {
+                        $Status = "Unknown"
+                    }
+
+                    # Write-Host ("The current status is {0}" -f $Status)
+    
+                    if ($Status -eq "Running") {
+                        Start-Sleep -Seconds 5
+                    }
+                } while ($Status -eq "Running")
+            }
+    
+            $Response
+        }
+    
+        else {
+            $Response
+        }
+    }    
 }

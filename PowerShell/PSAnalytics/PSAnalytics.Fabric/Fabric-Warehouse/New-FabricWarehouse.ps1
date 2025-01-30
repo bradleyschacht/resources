@@ -14,6 +14,11 @@ function New-FabricWarehouse {
 
     $WorkspaceID = (Get-FabricWorkspace -Workspace $Workspace -AccessToken $AccessToken).id
 
+    if (Get-FabricWarehouse -Workspace $WorkspaceID -Warehouse $Name -AccessToken $AccessToken)
+        {
+            throw ("The warehouse {0} already exists in workspace {1}" -f $Name, $Workspace)
+        }
+
     if($CaseSensitive) {
         $DefaultCollation = "Latin1_General_100_BIN2_UTF8"
     }
@@ -30,5 +35,21 @@ function New-FabricWarehouse {
     $Body = Get-FabricFilterHashtable $BodyProperties | ConvertTo-Json
 
     $Uri = "https://api.fabric.microsoft.com/v1/workspaces/{0}/warehouses" -f $WorkspaceID
-    Invoke-FabricRestMethod -Uri $Uri -Method POST -Body $Body -AccessToken $AccessToken
+    try {
+        $null = Invoke-FabricRestMethod -Uri $Uri -Method POST -Body $Body -AccessToken $AccessToken   
+    }
+    catch {
+        throw $_
+    }
+
+    do {
+        $Warehouse = Get-FabricWarehouse -Workspace $WorkspaceID -Warehouse $Name -AccessToken $AccessToken
+
+        if (!$Warehouse) {
+            Start-Sleep -Seconds 2
+        }
+    }
+    while (!$Warehouse)
+
+    $Warehouse
 }

@@ -33,10 +33,10 @@ function Invoke-SqlLoadTest {
         [Parameter(Mandatory=$false)] [boolean]$StoreQueryResults                       = $false,   <#  Default: $false  #>
         [Parameter(Mandatory=$false)] [int32]$BatchTimeoutInMinutes                     = 120,      <#  Default: 120 minutes  #>
         [Parameter(Mandatory=$false)] [int32]$QueryRetryLimit                           = 0,        <#  Default: 0 -> The query will not retry on failure.  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesAfterCapacityResume      = 1,        <#  Default: 1 minute #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesAfterCapacitySkuChange   = 5,        <#  Default: 5 minutes #>
         [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesForQueryInsightsData     = 15,       <#  Default: 15  minutes  #>
-        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesForCapacityMetricsData   = 15,       <#  Default: 15  minutes  #>
-        [Parameter(Mandatory=$false)] [int32]$WaitTimeInSecondsAfterCapacitySkuChange   = 300,      <#  Default: 5 minutes -> 300 seconds  #>
-        [Parameter(Mandatory=$false)] [int32]$WaitTimeInSecondsAfterCapacityResume      = 60        <#  Default: 1 minute  -> 60  seconds  #>
+        [Parameter(Mandatory=$false)] [int32]$WaitTimeInMinutesForCapacityMetricsData   = 15        <#  Default: 15  minutes  #>
     )
 
     # Job Initialization Script
@@ -152,25 +152,158 @@ function Invoke-SqlLoadTest {
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get capacity CU price per hour.")
     $CapacityUnitPricePerHour = (Get-FabricCUPricePerHour -Region $CapacityRegion).Items.retailPrice
 
-    # Determine if the item is a lakehouse or a warehouse, then gather the SQL connection string information.
-    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get lakehouse information.")
-    $Lakehouse = Get-FabricLakehouse -Workspace $WorkspaceID -Lakehouse $ItemName
-    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get warehouse information.")
-    $Warehouse = (Get-FabricWarehouse -Workspace $WorkspaceID -Warehouse $ItemName)
-    if ($null -ne $Lakehouse.id) {
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("A lakehouse item type has been found.")
-        $ItemID     = $Lakehouse.id
-        $ItemType   = $Lakehouse.type
-        $Server     = $Lakehouse.sqlEndpointProperties.connectionString
-    }
-    elseif ($null -ne $Warehouse.id) {
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("A warehouse item type has been found.")
-        $ItemID     = $Warehouse.id
-        $ItemType   = $Warehouse.type
-        $Server     = $Warehouse.connectionString
+
+    # If any variables are still empty or $null then don't continue with the capacity checks.
+    if (
+        [string]::IsNullOrEmpty($WorkspaceID) -or `
+        [string]::IsNullOrEmpty($ItemName) -or `
+        [string]::IsNullOrEmpty($CapacitySubscriptionID) -or `
+        [string]::IsNullOrEmpty($CapacityResourceGroupName) -or `
+        [string]::IsNullOrEmpty($CapacityName) -or `
+        [string]::IsNullOrEmpty($CapacitySize) -or `
+        [string]::IsNullOrEmpty($CapacityID)
+    ) {
+        $RunBatch = $false
+        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("At least one capacity parameter value was not found. The batch will be terminated.")
     }
     else {
-        "Unknown item type."
+        $RunBatch = $true
+    }
+
+
+    # Perform the necessary capacity related functions (Assign | Scale | Resume) then check to be sure the SQL endpoint is accessible. 
+    if ($true -eq $RunBatch) {
+        try {
+            # Assign the correct capacity for this batch to the workspace.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Assigning capacity to the workspace.")
+            $null = Set-FabricWorkspaceCapacity -Workspace $WorkspaceID -Capacity $CapacityID
+            
+            # Get the capacity's current state and SKU.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity SKU and status.")
+            $CapacityCurrent = Get-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName
+            
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current state: {0}" -f $CapacityCurrent.properties.state)
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current SKU: {0}" -f $CapacityCurrent.sku.name)
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity expected SKU: {0}" -f $CapacitySize)
+
+            # Check if the current vs. expected SKUs match. If they don't, scale the capacity.
+            if ($CapacityCurrent.sku.name -ne $CapacitySize) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity SKUs do not match.")
+                
+                # Pause the capacity if it is running so that the current activity is cleared.
+                if (($CapacityCurrent.properties.state -ne "Paused") -and ($true -eq $PauseOnCapacitySkuChange)) {
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Pausing the capacity before scaling.")
+                    $null = Suspend-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName                
+                }
+
+                # Scale the capacity to the proper SKU.
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Initiating a scale operation.")
+                $CapacityCurrent = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
+                
+                # Wait for x seconds after a SKU change.
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minutes after a scaling operation." -f $WaitTimeInMinutesAfterCapacitySkuChange)
+                Start-Sleep -Seconds ($WaitTimeInMinutesAfterCapacitySkuChange * 60)
+            }
+
+            # Resume the capacity if it is not running.
+            if ($CapacityCurrent.properties.state -ne "Active") {
+                # Start the capacity.
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The capacity is paused. Resuming the capacity.")
+                $null = Resume-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
+                
+                # Wait for x seconds after the capacity becomes active.
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minutes after a capacity resume operation." -f $WaitTimeInMinutesAfterCapacityResume)
+                Start-Sleep -Seconds ($WaitTimeInMinutesAfterCapacityResume * 60)
+            }
+
+            # Determine if the item is a lakehouse or a warehouse, then gather the SQL connection string information.
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get lakehouse information.")
+            $Lakehouse = Get-FabricLakehouse -Workspace $WorkspaceID -Lakehouse $ItemName
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Calling API to get warehouse information.")
+            $Warehouse = (Get-FabricWarehouse -Workspace $WorkspaceID -Warehouse $ItemName)
+            if ($null -ne $Lakehouse.id) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("A lakehouse item type has been found.")
+                $ItemID     = $Lakehouse.id
+                $ItemType   = $Lakehouse.type
+                $Server     = $Lakehouse.sqlEndpointProperties.connectionString
+            }
+            elseif ($null -ne $Warehouse.id) {
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("A warehouse item type has been found.")
+                $ItemID     = $Warehouse.id
+                $ItemType   = $Warehouse.type
+                $Server     = $Warehouse.connectionString
+            }
+            else {
+                "Unknown item type."
+            }
+        }
+        catch {
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ($_.Exception.Message)
+            $RunBatch = $false
+        }
+
+        if ($true -eq $RunBatch) {
+            # Set the variables for the SQL endpoint check loop.
+            $RetryLimit = 2
+            $RetryCount = 0
+            $SQLEndpointActive = $false
+
+            do {
+                try {
+                    # Run a query against the database to see if it can connect and return some relevant metadata with it.
+                    $Query = "SELECT compatibility_level, collation_name, is_auto_create_stats_on, is_auto_update_stats_on, is_result_set_caching_on, is_vorder_enabled FROM sys.databases WHERE name = '{0}'" -f $ItemName
+                    $QueryOutput = Invoke-FabricSQLCommand -Server $Server -Database $ItemName -Query $Query
+
+                    # Check the query output for errors. 
+                    if ($QueryOutput.Errors.Count -gt 0) {
+                        # Combine the messages and errors into a single output for logging.
+                        $FullOutput = @()
+                        ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
+                            $FullOutput += $Line + "`r`n"
+                        }
+                        ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
+                            $FullOutput += $Line + "`r`n"
+                        }
+
+                        throw ($FullOutput)
+                    }
+
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("SQL endpoint is online and responding.")
+                    $DatabaseCompatibilityLevel      = $QueryOutput.Dataset.Tables.Rows.compatibility_level
+                    $DatabaseCollationName           = $QueryOutput.Dataset.Tables.Rows.collation_name
+                    $DatabaseIsAutoCreateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_create_stats_on
+                    $DatabaseIsAutoUpdateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_update_stats_on
+                    $DatabaseIsVOrderEnabled         = $(if ($null -eq $DatabaseIsVOrderEnabled) {$QueryOutput.Dataset.Tables.Rows.is_vorder_enabled} else {$DatabaseIsVOrderEnabled})
+                    $DatabaseIsResultSetCachingOn    = $QueryOutput.Dataset.Tables.Rows.is_result_set_caching_on
+                    
+                    # Set the varaibles to indicate the batch should be run and the SQL endpoint check loop is complete.
+                    $RunBatch = $true
+                    $SQLEndpointActive = $true
+                }
+                catch {
+                    # Set the variables to not run the batch if the SQL endpoint check fails and iterate to the next check loop.
+                    $RunBatch = $false
+                    $RetryCount = $RetryCount + 1
+                    
+                    # If the loop has reached its retry limit, terminate the batch. 
+                    if ($RetryCount -gt $RetryLimit) {
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1))
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ($_.Exception.Message)
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check retry limit has been met. Terminating the SQL endpoint check and the batch.")
+                    }
+                    # If the loop has not reached its limit, wait and try again.
+                    else {
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1))
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ($_.Exception.Message)
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check retry limit has not been met. Rechecking the SQL endpoint in 60 seconds.")
+                        Start-Sleep -Seconds 60
+                    }     
+                }
+            } until (
+                # Continue running the loop until the SQL endpoint is active or the retry limit is reached.
+                ($true -eq $SQLEndpointActive) -or ($RetryCount -gt $RetryLimit)
+            )
+        }
     }
 
     # If any variables are still empty or $null then don't run the batch.
@@ -210,112 +343,6 @@ function Invoke-SqlLoadTest {
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityRegion: {0}" -f $CapacityRegion)
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityUnitPricePerHour: {0}" -f $CapacityUnitPricePerHour)
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("CapacityID: {0}" -f $CapacityID)
-
-    # Perform the necessary capacity related functions (Assign | Scale | Resume) then check to be sure the SQL endpoint is accessible. 
-    if ($true -eq $RunBatch) {
-        # Assign the correct capacity for this batch to the workspace.
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Assigning capacity to the workspace.")
-        $null = Set-FabricWorkspaceCapacity -Workspace $WorkspaceID -Capacity $CapacityID
-        
-        # Get the capacity's current state and SKU.
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity SKU and status.")
-        $CapacityCurrent = Get-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName
-        
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current state: {0}" -f $CapacityCurrent.properties.state)
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current SKU: {0}" -f $CapacityCurrent.sku.name)
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity expected SKU: {0}" -f $CapacitySize)
-
-        # Check if the current vs. expected SKUs match. If they don't, scale the capacity.
-        if ($CapacityCurrent.sku.name -ne $CapacitySize) {
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity SKUs do not match.")
-            
-            # Pause the capacity if it is running so that the current activity is cleared.
-            if (($CapacityCurrent.properties.state -ne "Paused") -and ($true -eq $PauseOnCapacitySkuChange)) {
-                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Pausing the capacity before scaling.")
-                $null = Suspend-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName                
-            }
-
-            # Scale the capacity to the proper SKU.
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Initiating a scale operation.")
-            $CapacityCurrent = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
-            
-            # Wait for x seconds after a SKU change.
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} seconds after a scaling operation." -f $WaitTimeInSecondsAfterCapacitySkuChange)
-            Start-Sleep -Seconds $WaitTimeInSecondsAfterCapacitySkuChange
-        }
-
-        # Resume the capacity if it is not running.
-        if ($CapacityCurrent.properties.state -ne "Active") {
-            # Start the capacity.
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The capacity is paused. Resuming the capacity.")
-            $null = Resume-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
-            
-            # Wait for x seconds after the capacity becomes active.
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} seconds after a capacity resume operation." -f $WaitTimeInSecondsAfterCapacityResume)
-            Start-Sleep -Seconds $WaitTimeInSecondsAfterCapacityResume
-        }
-
-        # Set the variables for the SQL endpoint check loop.
-        $RetryLimit = 2
-        $RetryCount = 0
-        $SQLEndpointActive = $false
-
-        do {
-            try {
-                # Run a query against the database to see if it can connect and return some relevant metadata with it.
-                $Query = "SELECT compatibility_level, collation_name, is_auto_create_stats_on, is_auto_update_stats_on, is_result_set_caching_on, is_vorder_enabled FROM sys.databases WHERE name = '{0}'" -f $ItemName
-                $QueryOutput = Invoke-FabricSQLCommand -Server $Server -Database $ItemName -Query $Query
-
-                # Check the query output for errors. 
-                if ($QueryOutput.Errors.Count -gt 0) {
-                    # Combine the messages and errors into a single output for logging.
-                    $FullOutput = @()
-                    ForEach ($line in $($QueryOutput.Messages -split "`r`n")) {
-                        $FullOutput += $Line + "`r`n"
-                    }
-                    ForEach ($line in $($QueryOutput.Errors -split "`r`n")) {
-                        $FullOutput += $Line + "`r`n"
-                    }
-
-                    throw ($FullOutput)
-                }
-
-                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("SQL endpoint is online and responding.")
-                $DatabaseCompatibilityLevel      = $QueryOutput.Dataset.Tables.Rows.compatibility_level
-                $DatabaseCollationName           = $QueryOutput.Dataset.Tables.Rows.collation_name
-                $DatabaseIsAutoCreateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_create_stats_on
-                $DatabaseIsAutoUpdateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_update_stats_on
-                $DatabaseIsVOrderEnabled         = $(if ($null -eq $DatabaseIsVOrderEnabled) {$QueryOutput.Dataset.Tables.Rows.is_vorder_enabled} else {$DatabaseIsVOrderEnabled})
-                $DatabaseIsResultSetCachingOn    = $QueryOutput.Dataset.Tables.Rows.is_result_set_caching_on
-                
-                # Set the varaibles to indicate the batch should be run and the SQL endpoint check loop is complete.
-                $RunBatch = $true
-                $SQLEndpointActive = $true
-            }
-            catch {
-                # Set the variables to not run the batch if the SQL endpoint check fails and iterate to the next check loop.
-                $RunBatch = $false
-                $RetryCount = $RetryCount + 1
-                
-                # If the loop has reached its retry limit, terminate the batch. 
-                if ($RetryCount -gt $RetryLimit) {
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1))
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ($_.Exception.Message)
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check retry limit has been met. Terminating the SQL endpoint check and the batch.")
-                }
-                # If the loop has not reached its limit, wait and try again.
-                else {
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1))
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ($_.Exception.Message)
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("SQL endpoint check retry limit has not been met. Rechecking the SQL endpoint in 60 seconds.")
-                    Start-Sleep -Seconds 60
-                }     
-            }
-        } until (
-            # Continue running the loop until the SQL endpoint is active or the retry limit is reached.
-            ($true -eq $SQLEndpointActive) -or ($RetryCount -gt $RetryLimit)
-        )
-    }
 
     if ($true -eq $RunBatch) {
 

@@ -5,7 +5,7 @@ function Suspend-FabricAzCapacity {
         [Parameter(Mandatory = $true)] [string]$ResourceGroupName,
         [Parameter(Mandatory = $true)] [string]$CapacityName,
         [Parameter(Mandatory = $false)] [string]$AccessToken,
-        [Parameter(Mandatory = $false)] [string]$APIVersion = "2022-07-01-preview"
+        [Parameter(Mandatory = $false)] [string]$APIVersion = "2023-11-01"
     )
 
     if ([string]::IsNullOrEmpty($AccessToken)) { 
@@ -17,9 +17,25 @@ function Suspend-FabricAzCapacity {
     if ($Capacity.properties.state -eq "Paused") {
         #Do nothing.
     }
+    elseif ($Capacity.properties.state -eq "Pausing") {
+        try {  
+            do {
+                $Capacity = Get-FabricAzCapacity -AccessToken $AccessToken -SubscriptionID $SubscriptionID -ResourceGroupName $ResourceGroupName -Capacity $CapacityName -APIVersion $APIVersion
+                    
+                if ($Capacity.properties.state -ne "Paused") {
+                    Start-Sleep -Seconds 5
+                }
+            } until (
+                $Capacity.properties.state -eq "Paused"
+            )
+        }
+        catch {
+            throw $_
+        }
+    }
     elseif ($Capacity.properties.state -eq "Active") {
         try {  
-            $Uri        = "https://management.azure.com/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.Fabric/capacities/{2}/suspend?api-version={3}" -f $SubscriptionID, $ResourceGroupName, $CapacityName, $APIVersion
+            $Uri = "https://management.azure.com/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.Fabric/capacities/{2}/suspend?api-version={3}" -f $SubscriptionID, $ResourceGroupName, $CapacityName, $APIVersion
             $null = Invoke-FabricRestMethod -Uri $Uri -Method POST -AccessToken $AccessToken
             
             Start-Sleep -Seconds 5
@@ -35,7 +51,7 @@ function Suspend-FabricAzCapacity {
             )
         }
         catch {
-            $_
+            throw $_
         }
     }
     else {

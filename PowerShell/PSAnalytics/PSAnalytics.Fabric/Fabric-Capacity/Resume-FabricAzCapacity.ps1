@@ -5,7 +5,7 @@ function Resume-FabricAzCapacity {
         [Parameter(Mandatory = $true)] [string]$ResourceGroupName,
         [Parameter(Mandatory = $true)] [string]$CapacityName,
         [Parameter(Mandatory = $false)] [string]$AccessToken,
-        [Parameter(Mandatory = $false)] [string]$APIVersion = "2022-07-01-preview"
+        [Parameter(Mandatory = $false)] [string]$APIVersion = "2023-11-01"
     )
 
     if ([string]::IsNullOrEmpty($AccessToken)) { 
@@ -35,7 +35,7 @@ function Resume-FabricAzCapacity {
             )
         }
         catch {
-            $_
+            throw $_
         }
     }
     else {
