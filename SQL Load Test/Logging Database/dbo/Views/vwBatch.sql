@@ -3,13 +3,22 @@ GO
 
 CREATE VIEW dbo.vwBatch
 AS
-WITH Batch AS (
+WITH
+ScenarioStartTime AS (
+	SELECT
+		ScenarioID,
+		MIN(StartTime) AS ScenarioStartTime
+	FROM dbo.Batch
+	GROUP BY ScenarioID
+),
+Batch AS (
 	SELECT
 		ScenarioID,
 		ScenarioName,
 		BatchID,
 		BatchName,
 		BatchDescription,
+		LogDirectory,
 		QueryDirectory,
 		ThreadCount,
 		IterationCount,
@@ -38,7 +47,9 @@ WITH Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
-		Duration AS BatchDuration
+		Duration AS BatchDuration,
+		HasError,
+		HasWarning
 	FROM dbo.Batch
 ),
 Thread AS (
@@ -87,22 +98,23 @@ Statement AS (
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsLabel), ''), ', ') AS QueryInsightsLabel,
 		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
 		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
-		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds,
-		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE BatchID = ''', BatchID, '''') AS StatementDetail
+		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds
 	FROM dbo.Statement
 	GROUP BY
 		BatchID
 )
 
 SELECT
-	ROW_NUMBER() OVER(ORDER BY b.BatchStartTime) AS SortOrder,
+	ROW_NUMBER() OVER(ORDER BY sst.ScenarioStartTime, b.BatchStartTime) AS SortOrder,
 
 	-- Batch
 	b.ScenarioID,
 	b.ScenarioName,
+	sst.ScenarioStartTime,
 	b.BatchID,
 	b.BatchName,
 	b.BatchDescription,
+	b.LogDirectory,
 	b.QueryDirectory,
 	b.ThreadCount,
 	b.IterationCount,
@@ -132,25 +144,31 @@ SELECT
 	b.BatchEndTime,
 	b.BatchDurationInMS,
 	b.BatchDuration,
+	b.HasError AS BatchHasError,
+	b.HasWarning AS BatchHasWarning,
 
 	-- Thread
+	CONCAT('SELECT * FROM dbo.vwThread WHERE BatchID = ''', b.BatchID, '''') AS ThreadDetail,
 	t.TotalThreadDurationInMS,
 	t.TotalThreadDuration,
 
 	-- Iteration
+	CONCAT('SELECT * FROM dbo.vwIteration WHERE BatchID = ''', b.BatchID, '''') AS IterationDetail,
 	i.TotalIterationDurationInMS,
 	i.TotalIterationDuration,
 
 	-- Query
+	CONCAT('SELECT * FROM dbo.vwQuery WHERE BatchID = ''', b.BatchID, '''') AS QueryDetail,
 	q.CountOfQueries,
 	q.TotalQueryDurationInMS,
 	q.TotalQueryDuration,
 	q.TotalDistributedStatementCount,
 	q.TotalRetryCount,
 	q.TotalResultsRecordCount,
-	q.HasError,
+	q.HasError AS QueryHasError,
 
 	-- Statement
+	CONCAT('SELECT * FROM dbo.vwStatement WHERE BatchID = ''', b.BatchID, '''') AS StatementDetail,
 	s.CountOfStatements,
 	s.CountOfStatementsWithQueryInsights,
 	s.CountOfStatementsWithCapacityMetrics,
@@ -165,9 +183,10 @@ SELECT
 	s.QueryInsightsLabel,
 	s.TotalCapacityMetricsCapacityUnitSeconds,
 	s.TotalCapacityMetricsOperationCost,
-	s.TotalCapacityMetricsDurationInSeconds,
-	s.StatementDetail
+	s.TotalCapacityMetricsDurationInSeconds
 FROM Batch AS b
+LEFT JOIN ScenarioStartTime AS sst
+	ON b.ScenarioID = sst.ScenarioID
 LEFT JOIN Thread AS t
 	ON b.BatchID = t.BatchID
 LEFT JOIN Iteration AS i

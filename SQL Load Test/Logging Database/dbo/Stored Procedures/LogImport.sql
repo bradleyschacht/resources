@@ -4,7 +4,26 @@ GO
 CREATE PROCEDURE dbo.ProcessLogImportData
 AS
 BEGIN
+	/* Store log directory */
+	DECLARE @LogDirectory NVARCHAR (500) = (
+		SELECT
+			JSON_VALUE(LogContent, '$.LogDirectory')
+		FROM dbo.LogImport
+		WHERE LogType = 'LogDirectory'
+	)
+
+	/* Store batch id */
+	DECLARE @BatchID NVARCHAR (36) = (
+		SELECT
+			COALESCE(
+				(SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Log' AND JSON_VALUE(LogContent, '$.BatchID') IS NOT NULL),
+				(SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Batch')
+			)
+	)
+
 	/* Batch */
+	DELETE FROM dbo.Batch WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Batch')
+
 	INSERT INTO dbo.Batch
 	SELECT
 		JSON_VALUE(LogContent, '$.ScenarioID') AS ScenarioID,
@@ -12,6 +31,7 @@ BEGIN
 		JSON_VALUE(LogContent, '$.BatchID') AS BatchID,
 		JSON_VALUE(LogContent, '$.BatchName') AS BatchName,
 		JSON_VALUE(LogContent, '$.BatchDescription') AS BatchDescription,
+		@LogDirectory AS LogDirectory,
 		JSON_VALUE(LogContent, '$.QueryDirectory') AS QueryDirectory,
 		JSON_VALUE(LogContent, '$.ThreadCount') AS ThreadCount,
 		JSON_VALUE(LogContent, '$.IterationCount') AS IterationCount,
@@ -41,12 +61,30 @@ BEGIN
 		JSON_VALUE(LogContent, '$.EndTime') AS EndTime,
 		JSON_VALUE(LogContent, '$.DurationInMS') AS DurationInMS,
 		JSON_VALUE(LogContent, '$.Duration') AS Duration,
+		JSON_VALUE(LogContent, '$.HasError') AS DurationInMS,
+		JSON_VALUE(LogContent, '$.HasWarning') AS DurationInMS,
 		GETDATE() AS CreateTime,
 		GETDATE() AS LastUpdateTime
 	FROM dbo.LogImport
-	WHERE LogType = 'BatchLog'
+	WHERE LogType = 'Batch'
+	
+	/* Log */
+	DELETE FROM dbo.BatchLog WHERE BatchID = @BatchID
+
+	IF EXISTS (SELECT TOP 1 LogContent FROM dbo.LogImport WHERE LogType = 'Log' AND JSON_VALUE(LogContent, '$.MessageType') IN ('Error', 'Warning'))
+	INSERT INTO dbo.BatchLog
+	SELECT
+		@BatchID AS BatchID,
+		LogContent,
+		GETDATE() AS CreateTime,
+		GETDATE() AS LastUpdateTime
+	FROM dbo.LogImport
+	WHERE
+		LogType = 'Log'
 
 	/* Thread */
+	DELETE FROM dbo.Thread WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Thread')
+
 	INSERT INTO dbo.Thread
 	SELECT
 		JSON_VALUE(LogContent, '$.ThreadID') AS ThreadID,
@@ -59,9 +97,11 @@ BEGIN
 		GETDATE() AS CreateTime,
 		GETDATE() AS LastUpdateTime
 	FROM dbo.LogImport
-	WHERE LogType = 'ThreadLog'
+	WHERE LogType = 'Thread'
 
 	/* Iteration */
+	DELETE FROM dbo.Iteration WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Iteration')
+
 	INSERT INTO dbo.Iteration
 	SELECT
 		JSON_VALUE(LogContent, '$.IterationID') AS IterationID,
@@ -75,9 +115,11 @@ BEGIN
 		GETDATE() AS CreateTime,
 		GETDATE() AS LastUpdateTime
 	FROM dbo.LogImport
-	WHERE LogType = 'IterationLog'
+	WHERE LogType = 'Iteration'
 
 	/* Query */
+	DELETE FROM dbo.Query WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Query')
+
 	INSERT INTO dbo.Query
 	SELECT
 		JSON_VALUE(LogContent, '$.QueryID') AS QueryID,
@@ -102,9 +144,11 @@ BEGIN
 		GETDATE() AS CreateTime,
 		GETDATE() AS LastUpdateTime
 	FROM dbo.LogImport
-	WHERE LogType = 'QueryLog'
+	WHERE LogType = 'Query'
 
 	/* Statement */
+	DELETE FROM dbo.Statement WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Statement')
+
 	;WITH StatementLog AS (
 		SELECT
 			JSON_VALUE(LogContent, '$.StatementID') AS StatementID,
@@ -117,7 +161,7 @@ BEGIN
 			JSON_VALUE(LogContent, '$.DistributedRequestID') AS DistributedRequestID,
 			JSON_VALUE(LogContent, '$.QueryHash') AS QueryHash
 		FROM dbo.LogImport
-		WHERE LogType = 'StatementLog'
+		WHERE LogType = 'Statement'
 	),
 	QueryInsights AS (
 		SELECT
@@ -192,8 +236,11 @@ BEGIN
 		ON SL.StatementID = CM.StatementID
 
 	/* Query Error */
+	DELETE FROM dbo.QueryError WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'QueryError')
+
 	INSERT INTO dbo.QueryError
 	SELECT
+		JSON_VALUE(LogContent, '$.BatchID') AS BatchID,
 		JSON_VALUE(LogContent, '$.QueryID') AS QueryID,
 		JSON_VALUE(LogContent, '$.Error') AS Error,
 		GETDATE() AS CreateTime,

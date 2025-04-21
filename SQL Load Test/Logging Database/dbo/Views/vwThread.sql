@@ -10,6 +10,7 @@ WITH Batch AS (
 		BatchID,
 		BatchName,
 		BatchDescription,
+		LogDirectory,
 		QueryDirectory,
 		ThreadCount,
 		IterationCount,
@@ -38,7 +39,9 @@ WITH Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
-		Duration AS BatchDuration
+		Duration AS BatchDuration,
+		HasError,
+		HasWarning
 	FROM dbo.Batch
 ),
 Thread AS (
@@ -90,8 +93,7 @@ Statement AS (
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsLabel), ''), ', ') AS QueryInsightsLabel,
 		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
 		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
-		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds,
-		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE ThreadID = ''', ThreadID, '''') AS StatementDetail
+		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds
 	FROM dbo.Statement
 	GROUP BY
 		ThreadID
@@ -106,6 +108,7 @@ SELECT
 	b.BatchID,
 	b.BatchName,
 	b.BatchDescription,
+	b.LogDirectory,
 	b.QueryDirectory,
 	b.ThreadCount,
 	b.IterationCount,
@@ -135,6 +138,8 @@ SELECT
 	b.BatchEndTime,
 	b.BatchDurationInMS,
 	b.BatchDuration,
+	b.HasError AS BatchHasError,
+	b.HasWarning AS BatchHasWarning,
 
 	-- Thread
 	t.ThreadID,
@@ -145,19 +150,22 @@ SELECT
 	t.ThreadDuration,
 
 	-- Iteration
+	CONCAT('SELECT * FROM dbo.vwIteration WHERE BatchID = ''', b.BatchID, '''') AS IterationDetail,
 	i.TotalIterationDurationInMS,
 	i.TotalIterationDuration,
 
 	-- Query
+	CONCAT('SELECT * FROM dbo.vwQuery WHERE BatchID = ''', b.BatchID, '''') AS QueryDetail,
 	q.CountOfQueries,
 	q.TotalQueryDurationInMS,
 	q.TotalQueryDuration,
 	q.TotalDistributedStatementCount,
 	q.TotalRetryCount,
 	q.TotalResultsRecordCount,
-	q.HasError,
+	q.HasError AS QueryHasError,
 
 	-- Statement
+	CONCAT('SELECT * FROM dbo.vwStatement WHERE BatchID = ''', b.BatchID, '''') AS StatementDetail,
 	s.CountOfStatements,
 	s.CountOfStatementsWithQueryInsights,
 	s.CountOfStatementsWithCapacityMetrics,
@@ -172,8 +180,7 @@ SELECT
 	s.QueryInsightsLabel,
 	s.TotalCapacityMetricsCapacityUnitSeconds,
 	s.TotalCapacityMetricsOperationCost,
-	s.TotalCapacityMetricsDurationInSeconds,
-	s.StatementDetail
+	s.TotalCapacityMetricsDurationInSeconds
 FROM Batch AS b
 LEFT JOIN Thread AS t
 	ON b.BatchID = t.BatchID

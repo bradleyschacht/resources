@@ -16,7 +16,6 @@ function Invoke-SqlLoadTest {
         [Parameter(Mandatory=$true)]  [string]$Dataset,
         [Parameter(Mandatory=$true)]  [string]$DataSize,
         [Parameter(Mandatory=$true)]  [string]$DataStorage,
-        [Parameter(Mandatory=$false)] [boolean]$DatabaseIsVOrderEnabled,
         [Parameter(Mandatory=$true)]  [int32]$ThreadCount,
         [Parameter(Mandatory=$true)]  [int32]$IterationCount,
         [Parameter(Mandatory=$true)]  [string]$QueryDirectory,
@@ -125,6 +124,10 @@ function Invoke-SqlLoadTest {
     # Generate a batch id and store the start time.
     $BatchID = (New-Guid).ToString()
     $BatchStartTime = Get-Date
+
+    # Initialize the log.
+    $LogKey = (New-Guid).ToString()
+    $LocalLog[$LogKey] = @{"BatchID" = $BatchID}
 
     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Batch {0} has started." -f $BatchName)
 
@@ -273,7 +276,7 @@ function Invoke-SqlLoadTest {
                     $DatabaseCollationName           = $QueryOutput.Dataset.Tables.Rows.collation_name
                     $DatabaseIsAutoCreateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_create_stats_on
                     $DatabaseIsAutoUpdateStatsOn     = $QueryOutput.Dataset.Tables.Rows.is_auto_update_stats_on
-                    $DatabaseIsVOrderEnabled         = $(if ($null -eq $DatabaseIsVOrderEnabled) {$QueryOutput.Dataset.Tables.Rows.is_vorder_enabled} else {$DatabaseIsVOrderEnabled})
+                    $DatabaseIsVOrderEnabled         = $QueryOutput.Dataset.Tables.Rows.is_vorder_enabled
                     $DatabaseIsResultSetCachingOn    = $QueryOutput.Dataset.Tables.Rows.is_result_set_caching_on
                     
                     # Set the varaibles to indicate the batch should be run and the SQL endpoint check loop is complete.
@@ -290,6 +293,7 @@ function Invoke-SqlLoadTest {
                         Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check number {0} encountered an error." -f ($RetryCount - 1))
                         Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ($_.Exception.Message)
                         Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("SQL endpoint check retry limit has been met. Terminating the SQL endpoint check and the batch.")
+                        
                     }
                     # If the loop has not reached its limit, wait and try again.
                     else {
@@ -307,26 +311,25 @@ function Invoke-SqlLoadTest {
     }
 
     # If any variables are still empty or $null then don't run the batch.
-    if (
-        [string]::IsNullOrEmpty($WorkspaceName) -or `
-        [string]::IsNullOrEmpty($WorkspaceID) -or `
-        [string]::IsNullOrEmpty($ItemID) -or `
-        [string]::IsNullOrEmpty($ItemName) -or `
-        [string]::IsNullOrEmpty($ItemType) -or `
-        [string]::IsNullOrEmpty($Server) -or `
-        [string]::IsNullOrEmpty($CapacitySubscriptionID) -or `
-        [string]::IsNullOrEmpty($CapacityResourceGroupName) -or `
-        [string]::IsNullOrEmpty($CapacityName) -or `
-        [string]::IsNullOrEmpty($CapacitySize) -or `
-        [string]::IsNullOrEmpty($CapacityRegion) -or `
-        [string]::IsNullOrEmpty($CapacityUnitPricePerHour) -or `
-        [string]::IsNullOrEmpty($CapacityID)
-    ) {
-        $RunBatch = $false
-        Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("At least one batch lookup value was not found. The batch will be terminated.")
-    }
-    else {
-        $RunBatch = $true
+    if ($RunBatch -eq $true) {
+        if (
+            [string]::IsNullOrEmpty($WorkspaceName) -or `
+            [string]::IsNullOrEmpty($WorkspaceID) -or `
+            [string]::IsNullOrEmpty($ItemID) -or `
+            [string]::IsNullOrEmpty($ItemName) -or `
+            [string]::IsNullOrEmpty($ItemType) -or `
+            [string]::IsNullOrEmpty($Server) -or `
+            [string]::IsNullOrEmpty($CapacitySubscriptionID) -or `
+            [string]::IsNullOrEmpty($CapacityResourceGroupName) -or `
+            [string]::IsNullOrEmpty($CapacityName) -or `
+            [string]::IsNullOrEmpty($CapacitySize) -or `
+            [string]::IsNullOrEmpty($CapacityRegion) -or `
+            [string]::IsNullOrEmpty($CapacityUnitPricePerHour) -or `
+            [string]::IsNullOrEmpty($CapacityID)
+        ) {
+            $RunBatch = $false
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("At least one batch lookup value was not found. The batch will be terminated.")
+        }
     }
 
     # Write the parameters to the console and the log.
@@ -493,6 +496,7 @@ function Invoke-SqlLoadTest {
 
                                 # Add the message to the log.
                                 $LocalLogQueryError[$ErrorKey] = @{
+                                    "BatchID"    = $BatchID
                                     "QueryID"    = $QueryID
                                     "Error"      = $_.Exception.Message
                                 }
@@ -532,7 +536,7 @@ function Invoke-SqlLoadTest {
                                 if ($null -ne $ParsedMessage.StatementID) {
                                     $DistributedStatementCount += 1
 
-                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.BaseName -MessageType "Information" -MessageText ("Iteration {0} of {1} has detected a query statement id. The distributed statement id {2} will be written to the statement log." -f $Iteration.Iteration, $Iteration.IterationCount, $ParsedMessage.StatementID)
+                                    Add-LogEntry -Thread $Thread -Iteration $Iteration -Query $CurrentQuery.BaseName -MessageType "Information" -MessageText ("Iteration {0} of {1} has detected a query statement id. The distributed statement id {2} will be written to the statement log." -f $Iteration, $IterationCount, $ParsedMessage.StatementID)
 
                                     # Add the message to the log.
                                     $LocalLogStatement[$ParsedMessage.StatementID] = @{
@@ -668,45 +672,9 @@ function Invoke-SqlLoadTest {
 
         Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("All threads have been cleaned up.")       
         
-        $BatchEndTime = Get-Date
-        
-        $LogBatch = @{
-            "ScenarioID"                   = $ScenarioID
-            "ScenarioName"                 = $ScenarioName
-            "BatchID"                      = $BatchID
-            "BatchName"                    = $BatchName
-            "BatchDescription"             = $BatchDescription
-            "QueryDirectory"               = $QueryDirectory
-            "ThreadCount"                  = $ThreadCount
-            "IterationCount"               = $IterationCount
-            "WorkspaceID"                  = $WorkspaceID
-            "WorkspaceName"                = $WorkspaceName
-            "ItemID"                       = $ItemID
-            "ItemName"                     = $ItemName
-            "ItemType"                     = $ItemType
-            "Server"                       = $Server
-            "DatabaseCompatibilityLevel"   = $DatabaseCompatibilityLevel
-            "DatabaseCollation"            = $DatabaseCollationName
-            "DatabaseIsAutoCreateStatsOn"  = $DatabaseIsAutoCreateStatsOn
-            "DatabaseIsAutoUpdateStatsOn"  = $DatabaseIsAutoUpdateStatsOn
-            "DatabaseIsVOrderEnabled"      = $DatabaseIsVOrderEnabled
-            "DatabaseIsResultSetCachingOn" = $DatabaseIsResultSetCachingOn
-            "CapacityID"                   = $CapacityID
-            "CapacityName"                 = $CapacityName
-            "CapacitySubscriptionID"       = $CapacitySubscriptionID
-            "CapacityResourceGroupName"    = $CapacityResourceGroupName
-            "CapacitySize"                 = $CapacitySize
-            "CapacityUnitPricePerHour"     = $CapacityUnitPricePerHour
-            "CapacityRegion"               = $CapacityRegion
-            "Dataset"                      = $Dataset
-            "DataSize"                     = $DataSize
-            "DataStorage"                  = $DataStorage
-            "StartTime"                    = $BatchStartTime
-            "EndTime"                      = $BatchEndTime
-            "DurationInMS"                 = $([long]($BatchEndTime - $BatchStartTime).TotalMilliseconds)
-            "Duration"                     = $("{0}" -f ($BatchEndTime - $BatchStartTime).ToString("hh\:mm\:ss\.ffffff"))
-        }
     }
+
+    $BatchEndTime = Get-Date
 
     if (($true -eq $CollectQueryInsights -or $true -eq $CollectCapacityMetrics) -and $true -eq $RunBatch) {
         Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Gathering distributed statement ids from the statement log.")
@@ -776,7 +744,7 @@ function Invoke-SqlLoadTest {
         
             # If the time limit has expired, stop checking for new queries.
             if ((Get-Date) -gt $WaitForJobsUntil) {
-                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in query insghts. Therefore, query insights data may be incomplete." -f $WaitTimeInMinutesForQueryInsightsData)
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in query insights. Therefore, query insights data may be incomplete." -f $WaitTimeInMinutesForQueryInsightsData)
                 $ContinueLoop = $false
             }
         } while (
@@ -811,7 +779,7 @@ function Invoke-SqlLoadTest {
 
             # If the time limit has expired, stop checking for new queries.
             if ((Get-Date) -gt $WaitForJobsUntil) {
-                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, capacity metrics data may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData)
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, capacity metrics data may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData)
                 $ContinueLoop = $false
             }
         }
@@ -828,15 +796,71 @@ function Invoke-SqlLoadTest {
     if(!$QueryInsights) {$QueryInsights = @{}}
     if(!$CapacityMetrics) {$CapacityMetrics = @{}}
 
+    # Check for errors and warnings in the log.
+    $BatchHasError = $false
+    $BatchHasWarning = $false
+
+    foreach ($key in $Log.Keys) {
+        if ($Log[$key].MessageType -eq "Error") {
+            $BatchHasError = $true
+        }
+        elseif ($Log[$key].MessageType -eq "Warning") {
+            $BatchHasWarning = $true
+        }
+        else {
+            # Nothing
+        }
+    }
+    
+    # Build the batch log.
+    $LogBatch = [ordered]@{
+        "ScenarioID"                   = $ScenarioID
+        "ScenarioName"                 = $ScenarioName
+        "BatchID"                      = $BatchID
+        "BatchName"                    = $BatchName
+        "BatchDescription"             = $BatchDescription
+        "QueryDirectory"               = $QueryDirectory
+        "ThreadCount"                  = $ThreadCount
+        "IterationCount"               = $IterationCount
+        "WorkspaceID"                  = $WorkspaceID
+        "WorkspaceName"                = $WorkspaceName
+        "ItemID"                       = $ItemID
+        "ItemName"                     = $ItemName
+        "ItemType"                     = $ItemType
+        "Server"                       = $Server
+        "DatabaseCompatibilityLevel"   = $DatabaseCompatibilityLevel
+        "DatabaseCollation"            = $DatabaseCollationName
+        "DatabaseIsAutoCreateStatsOn"  = $DatabaseIsAutoCreateStatsOn
+        "DatabaseIsAutoUpdateStatsOn"  = $DatabaseIsAutoUpdateStatsOn
+        "DatabaseIsVOrderEnabled"      = $DatabaseIsVOrderEnabled
+        "DatabaseIsResultSetCachingOn" = $DatabaseIsResultSetCachingOn
+        "CapacityID"                   = $CapacityID
+        "CapacityName"                 = $CapacityName
+        "CapacitySubscriptionID"       = $CapacitySubscriptionID
+        "CapacityResourceGroupName"    = $CapacityResourceGroupName
+        "CapacitySize"                 = $CapacitySize
+        "CapacityUnitPricePerHour"     = $CapacityUnitPricePerHour
+        "CapacityRegion"               = $CapacityRegion
+        "Dataset"                      = $Dataset
+        "DataSize"                     = $DataSize
+        "DataStorage"                  = $DataStorage
+        "HasError"                     = $BatchHasError
+        "HasWarning"                   = $BatchHasWarning
+        "StartTime"                    = $BatchStartTime
+        "EndTime"                      = $BatchEndTime
+        "DurationInMS"                 = $([long]($BatchEndTime - $BatchStartTime).TotalMilliseconds)
+        "Duration"                     = $("{0}" -f ($BatchEndTime - $BatchStartTime).ToString("hh\:mm\:ss\.ffffff"))
+    }
+
     $BatchNameLogFile = $BatchName.Replace('<', '_').Replace('>', '_').Replace(':', '_').Replace('"', '_').Replace('/', '_').Replace('\', '_').Replace('|', '_').Replace('?', '_').Replace('*', '_')
 
-    $Log | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\Log.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
+    $Log | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\00_Log.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $LogBatch | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\01_Batch.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $LogThread | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\02_Thread.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $LogIteration | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\03_Iteration.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $LogQuery | ConvertTo-Json -Depth 5 | Out-File (New-Item ("{0}\{1}_{2}\04_Query.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
-    $LogQueryError | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\QueryError.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
-    $LogQueryResult | ConvertTo-Json -Depth 3 -WarningAction SilentlyContinue | Out-File (New-Item ("{0}\{1}_{2}\QueryResult.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
+    $LogQueryError | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\04_QueryError.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
+    $LogQueryResult | ConvertTo-Json -Depth 3 -WarningAction SilentlyContinue | Out-File (New-Item ("{0}\{1}_{2}\04_QueryResult.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $LogStatement | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\05_Statement.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)   
     $QueryInsights | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\06_QueryInsights.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)
     $CapacityMetrics | ConvertTo-Json | Out-File (New-Item ("{0}\{1}_{2}\07_CapacityMetrics.txt" -f $LogDirectory, $BatchStartTime.ToString("yyyy-MM-dd_HH.mm.ss"), $BatchNameLogFile) -Force)

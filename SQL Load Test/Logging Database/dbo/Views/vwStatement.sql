@@ -10,6 +10,7 @@ WITH Batch AS (
 		BatchID,
 		BatchName,
 		BatchDescription,
+		LogDirectory,
 		QueryDirectory,
 		ThreadCount,
 		IterationCount,
@@ -38,7 +39,9 @@ WITH Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
-		Duration AS BatchDuration
+		Duration AS BatchDuration,
+		HasError,
+		HasWarning
 	FROM dbo.Batch
 ),
 Thread AS (
@@ -124,6 +127,7 @@ SELECT
 	b.BatchID,
 	b.BatchName,
 	b.BatchDescription,
+	b.LogDirectory,
 	b.QueryDirectory,
 	b.ThreadCount,
 	b.IterationCount,
@@ -153,6 +157,8 @@ SELECT
 	b.BatchEndTime,
 	b.BatchDurationInMS,
 	b.BatchDuration,
+	b.HasError AS BatchHasError,
+	b.HasWarning AS BatchHasWarning,
 
 	-- Thread
 	t.ThreadID,
@@ -184,7 +190,7 @@ SELECT
 	q.RetryCount,
 	q.RetryLimit,
 	q.ResultsRecordCount,
-	q.HasError,
+	q.HasError AS QueryHasError,
 	q.Command,
 	q.QueryMessage,
 

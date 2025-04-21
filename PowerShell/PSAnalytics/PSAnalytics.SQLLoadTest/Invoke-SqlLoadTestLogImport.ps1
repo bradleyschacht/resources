@@ -48,27 +48,46 @@ function Invoke-SqlLoadTestLogImport {
         Write-Host ("Log data processing has started.")
         
         # Define the variables holding the individual log types.
-        $BatchLogPath = Join-Path -Path $CurrentLog.FullName -ChildPath "01_Batch.txt"
-        $ThreadLogPath = Join-Path -Path $CurrentLog.FullName -ChildPath "02_Thread.txt"
-        $IterationLogPath = Join-Path -Path $CurrentLog.FullName -ChildPath "03_Iteration.txt"
-        $QueryLogPath = Join-Path -Path $CurrentLog.FullName -ChildPath "04_Query.txt"
-        $StatementLogPath = Join-Path -Path $CurrentLog.FullName -ChildPath "05_Statement.txt"
-        $QueryInsightsPath = Join-Path -Path $CurrentLog.FullName -ChildPath "06_QueryInsights.txt"
-        $CapacityMetricsPath = Join-Path -Path $CurrentLog.FullName -ChildPath "07_CapacityMetrics.txt"
-        $QueryErrorPath = Join-Path -Path $CurrentLog.FullName -ChildPath "QueryError.txt"
+        $LogPath =              Join-Path -Path $CurrentLog.FullName -ChildPath "00_Log.txt"
+        $BatchLogPath =         Join-Path -Path $CurrentLog.FullName -ChildPath "01_Batch.txt"
+        $ThreadLogPath =        Join-Path -Path $CurrentLog.FullName -ChildPath "02_Thread.txt"
+        $IterationLogPath =     Join-Path -Path $CurrentLog.FullName -ChildPath "03_Iteration.txt"
+        $QueryLogPath =         Join-Path -Path $CurrentLog.FullName -ChildPath "04_Query.txt"
+        $QueryErrorPath =       Join-Path -Path $CurrentLog.FullName -ChildPath "04_QueryError.txt"
+        $StatementLogPath =     Join-Path -Path $CurrentLog.FullName -ChildPath "05_Statement.txt"
+        $QueryInsightsPath =    Join-Path -Path $CurrentLog.FullName -ChildPath "06_QueryInsights.txt"
+        $CapacityMetricsPath =  Join-Path -Path $CurrentLog.FullName -ChildPath "07_CapacityMetrics.txt"
 
         # Create the datatable to store the log data which will later be written in a single batch to the SQL Server table.
         $LogImport = [System.Data.DataTable]::new()
         [void]$LogImport.Columns.Add("LogType", [string])
         [void]$LogImport.Columns.Add("LogContent", [string])
 
+        # Log Directory
+        [void]$LogImport.Rows.Add("LogDirectory", ('{{"LogDirectory" : "{0}"}}' -f (Split-Path $CurrentLog.FullName -Leaf) | ConvertFrom-Json | ConvertTo-Json));
+   
+        # Log
+        if (Test-Path -Path $LogPath) {
+            Get-Content -Path $LogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
+                foreach ($Log in $_.Keys) {
+                    [void]$LogImport.Rows.Add("Log", ($_.$Log | ConvertTo-Json));
+                }
+            }
+            Write-Host ("Log import has completed.")
+            $LogFound = $true
+        }
+        else {
+            Write-Host ("Log not found at {0}" -f $LogPath) -ForegroundColor Red
+        }
+
         # Batch Log
         if (Test-Path -Path $BatchLogPath) {
             Get-Content -Path $BatchLogPath -Raw | ConvertFrom-JSON | ForEach-Object {    
                 foreach ($Log in $_) { 
-                    [void]$LogImport.Rows.Add("BatchLog", ($Log | ConvertTo-Json));
+                    [void]$LogImport.Rows.Add("Batch", ($Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Batch log import has completed.")
             $LogFound = $true
         }
         else {
@@ -79,9 +98,10 @@ function Invoke-SqlLoadTestLogImport {
         if (Test-Path -Path $ThreadLogPath) {
             Get-Content -Path $ThreadLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
                 foreach ($Log in $_.Keys) {
-                    [void]$LogImport.Rows.Add("ThreadLog", ($_.$Log | ConvertTo-Json));
+                    [void]$LogImport.Rows.Add("Thread", ($_.$Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Thread log import has completed.")
             $LogFound = $true
         }
         else {
@@ -92,9 +112,10 @@ function Invoke-SqlLoadTestLogImport {
         if (Test-Path -Path $IterationLogPath) {
             Get-Content -Path $IterationLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
                 foreach ($Log in $_.Keys) {
-                    [void]$LogImport.Rows.Add("IterationLog", ($_.$Log | ConvertTo-Json));
+                    [void]$LogImport.Rows.Add("Iteration", ($_.$Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Iteration log import has completed.")
             $LogFound = $true
         }
         else {
@@ -105,9 +126,10 @@ function Invoke-SqlLoadTestLogImport {
         if (Test-Path -Path $QueryLogPath) {
             Get-Content -Path $QueryLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
                 foreach ($Log in $_.Keys) {
-                    [void]$LogImport.Rows.Add("QueryLog", ($_.$Log | ConvertTo-Json));
+                    [void]$LogImport.Rows.Add("Query", ($_.$Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Query log import has completed.")
             $LogFound = $true
         }
         else {
@@ -118,9 +140,10 @@ function Invoke-SqlLoadTestLogImport {
         if (Test-Path -Path $StatementLogPath) {
             Get-Content -Path $StatementLogPath -Raw | ConvertFrom-JSON -AsHashtable | ForEach-Object {
                 foreach ($Log in $_.Keys) {
-                    [void]$LogImport.Rows.Add("StatementLog", ($_.$Log | ConvertTo-Json));
+                    [void]$LogImport.Rows.Add("Statement", ($_.$Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Statement log import has completed.")
             $LogFound = $true
         }
         else {
@@ -134,10 +157,11 @@ function Invoke-SqlLoadTestLogImport {
                     [void]$LogImport.Rows.Add("QueryInsights", ($Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Query insights log import has completed.")
             $LogFound = $true
         }
         else {
-            Write-Host ("Query insights not found at {0}" -f $QueryInsightsPath) -ForegroundColor Red
+            Write-Host ("Query insights log not found at {0}" -f $QueryInsightsPath) -ForegroundColor Red
         }
         
         # Capacity Metrics
@@ -147,6 +171,7 @@ function Invoke-SqlLoadTestLogImport {
                     [void]$LogImport.Rows.Add("CapacityMetrics", ($Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Capacity metrics log import has completed.")
             $LogFound = $true
         }
         else {
@@ -160,6 +185,7 @@ function Invoke-SqlLoadTestLogImport {
                     [void]$LogImport.Rows.Add("QueryError", ($_.$Log | ConvertTo-Json));
                 }
             }
+            Write-Host ("Query error log import has completed.")
             $LogFound = $true
         }
         else {
@@ -180,7 +206,7 @@ function Invoke-SqlLoadTestLogImport {
 
             # Check the query output for errors. 
             if ($QueryOutput.Errors.Count -gt 0) {
-                Write-Host "an error occurred while clearing the log import table."
+                Write-Host "An error occurred while clearing the log import table."
                 Write-Host "An error was found when parsing the query error output." -ForegroundColor Red
 
                 # Combine the messages and errors into a single output for logging.

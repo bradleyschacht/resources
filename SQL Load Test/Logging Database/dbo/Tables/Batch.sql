@@ -7,7 +7,8 @@ CREATE TABLE [dbo].[Batch] (
 	[BatchID]                      NVARCHAR (36)   NOT NULL,
 	[BatchName]                    NVARCHAR (200)  NULL,
 	[BatchDescription]             NVARCHAR (200)  NULL,
-	[QueryDirectory]               NVARCHAR (500)  NULL,
+	[LogDirectory]                 NVARCHAR (500)  NULL,
+    [QueryDirectory]               NVARCHAR (500)  NULL,
     [ThreadCount]                  INT             NULL,
     [IterationCount]               INT             NULL,
 	[WorkspaceID]                  NVARCHAR (200)  NULL,
@@ -36,14 +37,14 @@ CREATE TABLE [dbo].[Batch] (
     [EndTime]                      DATETIME2 (6)   NULL,
     [DurationInMS]                 BIGINT          NULL,
     [Duration]                     TIME (6)        NULL,
+    [HasError]                     BIT,
+    [HasWarning]                   BIT,
     [CreateTime]                   DATETIME2 (6)   NULL,
 	[LastUpdateTime]               DATETIME2 (6)   NULL
 )
 GO
 
-/*    
-[HasError]                  BIT             NULL,
-[HasWarning]                BIT             NULL,
+/*
 [ScenarioLog]               NVARCHAR (MAX)  NULL,
 [Status]                    NVARCHAR (20)  NULL,
 */

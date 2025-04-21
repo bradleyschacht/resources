@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Name>Logging Database</Name>
     <ProjectGuid>{AFC69402-F941-4652-913F-BCFDDD83369D}</ProjectGuid>
-    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlDbFabricDatabaseSchemaProvider</DSP>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
     <ModelCollation>1033, CI</ModelCollation>
   </PropertyGroup>
   <ItemGroup>
