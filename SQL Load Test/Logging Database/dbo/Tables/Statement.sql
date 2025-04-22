@@ -35,3 +35,6 @@ CREATE TABLE [dbo].[Statement] (
     [LastUpdateTime]                                DATETIME2 (6)   NULL
 )
 GO
+
+CREATE CLUSTERED INDEX [ci_dbo_Statement_BatchID_QueryID] ON [dbo].[Statement] ([BatchID], [QueryID])
+GO

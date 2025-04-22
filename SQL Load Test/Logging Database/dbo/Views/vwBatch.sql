@@ -30,6 +30,12 @@ Batch AS (
 		Server,
 		DatabaseCompatibilityLevel,
 		DatabaseCollation,
+		CASE 
+			WHEN CHARINDEX('_BIN_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_BIN2_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CS_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CI_', DatabaseCollation) > 0 THEN 0
+			ELSE NULL END AS DatabaseIsCaseSensitive,
 		DatabaseIsAutoCreateStatsOn,
 		DatabaseIsAutoUpdateStatsOn,
 		DatabaseIsVOrderEnabled,
@@ -47,6 +53,7 @@ Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
+		CEILING(DurationInMS / 1000.) AS BatchDurationInS,
 		Duration AS BatchDuration,
 		HasError,
 		HasWarning
@@ -55,28 +62,31 @@ Batch AS (
 Thread AS (
 	SELECT
 		BatchID,
-		SUM(DurationInMS) AS TotalThreadDurationInMS,
-		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalThreadDuration
+		SUM(DurationInMS) AS ThreadDurationInMS,
+		CEILING(SUM(DurationInMS) / 1000.) AS ThreadDurationInS,
+		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS ThreadDuration
 	FROM dbo.Thread
 	GROUP BY BatchID
 ),
 Iteration AS (
 	SELECT
 		BatchID,
-		SUM(DurationInMS) AS TotalIterationDurationInMS,
-		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalIterationDuration
+		SUM(DurationInMS) AS IterationDurationInMS,
+		CEILING(SUM(DurationInMS) / 1000.) AS IterationDurationInS,
+		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS IterationDuration
 	FROM dbo.Iteration
 	GROUP BY BatchID
 ),
 Query AS (
 	SELECT
 		BatchID,
-		COUNT(*) AS CountOfQueries,
-		SUM(DurationInMS) AS TotalQueryDurationInMS,
-		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS TotalQueryDuration,
-		SUM(DistributedStatementCount) AS TotalDistributedStatementCount,
-		SUM(RetryCount) AS TotalRetryCount,
-		SUM(ResultsRecordCount) AS TotalResultsRecordCount,
+		COUNT(*) AS QueryCount,
+		SUM(DurationInMS) AS QueryDurationInMS,
+		CEILING(SUM(DurationInMS) / 1000.) AS QueryDurationInS,
+		FORMAT(DATEADD(ms, SUM(DurationInMS), 0), 'HH:mm:ss.ffffff') AS QueryDuration,
+		SUM(DistributedStatementCount) AS DistributedStatementCount,
+		SUM(RetryCount) AS RetryCount,
+		SUM(ResultsRecordCount) AS ResultsRecordCount,
 		CASE WHEN SUM(CONVERT(INT, HasError)) > 0 THEN 1 ELSE 0 END AS HasError
 	FROM dbo.Query
 	GROUP BY BatchID
@@ -84,21 +94,22 @@ Query AS (
 Statement AS (
 	SELECT
 		BatchID,
-		COUNT(StatementID) AS CountOfStatements,
-		COUNT(QueryInsightsSessionID) AS CountOfStatementsWithQueryInsights,
-		COUNT(CapacityMetricsCapacityUnitSeconds) AS CountOfStatementsWithCapacityMetrics,
+		COUNT(StatementID) AS StatementCount,
+		COUNT(QueryInsightsSessionID) AS StatementsWithQueryInsightsCount,
+		COUNT(CapacityMetricsCapacityUnitSeconds) AS StatementsWithCapacityMetricsCount,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), DistributedStatementID), ''), ', ') AS DistributedStatementID,
-		SUM(QueryInsightsDurationInMS) AS TotalQueryInsightsDurationInMS,
-		SUM(QueryInsightsAllocatedCPUTimeMS) AS TotalQueryInsightsAllocatedCPUTimeMS,
-		SUM(QueryInsightsDataScannedRemoteStorageMB) AS TotalQueryInsightsDataScannedRemoteStorageMB,
-		SUM(QueryInsightsDataScannedMemoryMB) AS TotalQueryInsightsDataScannedMemoryMB,
-		SUM(QueryInsightsDataScannedDiskMB) AS TotalQueryInsightsDataScannedDiskMB,
-		SUM(QueryInsightsRowCount) AS TotalQueryInsightsRowCount,
+		SUM(QueryInsightsDurationInMS) AS QueryInsightsDurationInMS,
+		CEILING(SUM(QueryInsightsDurationInMS) / 1000.) AS QueryInsightsDurationInS,
+		SUM(QueryInsightsAllocatedCPUTimeMS) AS QueryInsightsAllocatedCPUTimeMS,
+		SUM(QueryInsightsDataScannedRemoteStorageMB) AS QueryInsightsDataScannedRemoteStorageMB,
+		SUM(QueryInsightsDataScannedMemoryMB) AS QueryInsightsDataScannedMemoryMB,
+		SUM(QueryInsightsDataScannedDiskMB) AS QueryInsightsDataScannedDiskMB,
+		SUM(QueryInsightsRowCount) AS QueryInsightsRowCount,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsStatus), ''), ', ') AS QueryInsightsStatus,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsLabel), ''), ', ') AS QueryInsightsLabel,
-		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
-		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
-		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds
+		SUM(CapacityMetricsCapacityUnitSeconds) AS CapacityMetricsCapacityUnitSeconds,
+		SUM(CapacityMetricsOperationCost) AS CapacityMetricsOperationCost,
+		SUM(CapacityMetricsDurationInSeconds) AS CapacityMetricsDurationInSeconds
 	FROM dbo.Statement
 	GROUP BY
 		BatchID
@@ -126,6 +137,7 @@ SELECT
 	b.Server,
 	b.DatabaseCompatibilityLevel,
 	b.DatabaseCollation,
+	b.DatabaseIsCaseSensitive,
 	b.DatabaseIsAutoCreateStatsOn,
 	b.DatabaseIsAutoUpdateStatsOn,
 	b.DatabaseIsVOrderEnabled,
@@ -143,47 +155,53 @@ SELECT
 	b.BatchStartTime,
 	b.BatchEndTime,
 	b.BatchDurationInMS,
+	b.BatchDurationInS,
 	b.BatchDuration,
+	CONCAT('SELECT * FROM dbo.vwBatchLog WHERE BatchID = ''', b.BatchID, '''') AS BatchLog,
 	b.HasError AS BatchHasError,
 	b.HasWarning AS BatchHasWarning,
 
 	-- Thread
 	CONCAT('SELECT * FROM dbo.vwThread WHERE BatchID = ''', b.BatchID, '''') AS ThreadDetail,
-	t.TotalThreadDurationInMS,
-	t.TotalThreadDuration,
+	t.ThreadDurationInMS,
+	t.ThreadDurationInS,
+	t.ThreadDuration,
 
-	-- Iteration
+	-- Iterationr
 	CONCAT('SELECT * FROM dbo.vwIteration WHERE BatchID = ''', b.BatchID, '''') AS IterationDetail,
-	i.TotalIterationDurationInMS,
-	i.TotalIterationDuration,
+	i.IterationDurationInMS,
+	i.IterationDurationInS,
+	i.IterationDuration,
 
 	-- Query
 	CONCAT('SELECT * FROM dbo.vwQuery WHERE BatchID = ''', b.BatchID, '''') AS QueryDetail,
-	q.CountOfQueries,
-	q.TotalQueryDurationInMS,
-	q.TotalQueryDuration,
-	q.TotalDistributedStatementCount,
-	q.TotalRetryCount,
-	q.TotalResultsRecordCount,
+	q.QueryCount,
+	q.QueryDurationInMS,
+	q.QueryDurationInS,
+	q.QueryDuration,
+	q.DistributedStatementCount,
+	q.RetryCount,
+	q.ResultsRecordCount,
 	q.HasError AS QueryHasError,
 
 	-- Statement
 	CONCAT('SELECT * FROM dbo.vwStatement WHERE BatchID = ''', b.BatchID, '''') AS StatementDetail,
-	s.CountOfStatements,
-	s.CountOfStatementsWithQueryInsights,
-	s.CountOfStatementsWithCapacityMetrics,
+	s.StatementCount,
+	s.StatementsWithQueryInsightsCount,
+	s.StatementsWithCapacityMetricsCount,
 	s.DistributedStatementID,
-	s.TotalQueryInsightsDurationInMS,
-	s.TotalQueryInsightsAllocatedCPUTimeMS,
-	s.TotalQueryInsightsDataScannedRemoteStorageMB,
-	s.TotalQueryInsightsDataScannedMemoryMB,
-	s.TotalQueryInsightsDataScannedDiskMB,
-	s.TotalQueryInsightsRowCount,
+	s.QueryInsightsDurationInMS,
+	s.QueryInsightsDurationInS,
+	s.QueryInsightsAllocatedCPUTimeMS,
+	s.QueryInsightsDataScannedRemoteStorageMB,
+	s.QueryInsightsDataScannedMemoryMB,
+	s.QueryInsightsDataScannedDiskMB,
+	s.QueryInsightsRowCount,
 	s.QueryInsightsStatus,
 	s.QueryInsightsLabel,
-	s.TotalCapacityMetricsCapacityUnitSeconds,
-	s.TotalCapacityMetricsOperationCost,
-	s.TotalCapacityMetricsDurationInSeconds
+	s.CapacityMetricsCapacityUnitSeconds,
+	s.CapacityMetricsOperationCost,
+	s.CapacityMetricsDurationInSeconds
 FROM Batch AS b
 LEFT JOIN ScenarioStartTime AS sst
 	ON b.ScenarioID = sst.ScenarioID

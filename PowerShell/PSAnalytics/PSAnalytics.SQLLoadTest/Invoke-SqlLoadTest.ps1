@@ -589,7 +589,7 @@ function Invoke-SqlLoadTest {
                             "Sequence"                  = $QuerySequence
                             "QueryFilePath"             = $CurrentQuery.FullName
                             "QueryFileName"             = $CurrentQuery.BaseName
-                            "Status"                    = $(if ($false -eq $QuerySuccessful) {"Failure"} elseif ($true -eq $QuerySuccessful -and -$RetryCount -gt 0) {"Success after retry"} elseif ($true -eq $QuerySuccessful -and $RetryCount -eq 0) {"Success"} else {"Unknown Status"})
+                            "Status"                    = $(if ($false -eq $QuerySuccessful) {"Failure"} elseif ($true -eq $QuerySuccessful -and $RetryCount -gt 0) {"Success after retry"} elseif ($true -eq $QuerySuccessful -and $RetryCount -eq 0) {"Success"} else {"Unknown Status"})
                             "StartTime"                 = $(if ($true -eq $QuerySuccessful) {"{0}" -f $QueryOutput.QueryStartTime})
                             "EndTime"                   = $(if ($true -eq $QuerySuccessful) {"{0}" -f $QueryOutput.QueryEndTime})
                             "DurationInMS"              = $(if ($true -eq $QuerySuccessful) {[long]($QueryOutput.QueryEndTime - $QueryOutput.QueryStartTime).TotalMilliseconds})

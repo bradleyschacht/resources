@@ -14,6 +14,9 @@ CREATE TABLE [dbo].[Thread] (
 )
 GO
 
+CREATE CLUSTERED INDEX [ci_dbo_Thread_BatchID_ThreadID] ON [dbo].[Thread] ([BatchID], [ThreadID])
+GO
+
 /*
 [CountOfQueries] INT            NULL,
 Count of statements?

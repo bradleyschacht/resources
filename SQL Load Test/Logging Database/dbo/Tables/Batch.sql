@@ -44,6 +44,9 @@ CREATE TABLE [dbo].[Batch] (
 )
 GO
 
+CREATE CLUSTERED INDEX [ci_dbo_Batch_BatchID] ON [dbo].[Batch] ([BatchID])
+GO
+
 /*
 [ScenarioLog]               NVARCHAR (MAX)  NULL,
 [Status]                    NVARCHAR (20)  NULL,

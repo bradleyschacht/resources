@@ -8,3 +8,6 @@ CREATE TABLE [dbo].[BatchLog] (
 	[LastUpdateTime]               DATETIME2 (6)   NULL
 )
 GO
+
+CREATE CLUSTERED INDEX [ci_dbo_BatchLog_BatchID] ON [dbo].[BatchLog] ([BatchID])
+GO

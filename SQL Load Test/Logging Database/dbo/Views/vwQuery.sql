@@ -22,6 +22,12 @@ WITH Batch AS (
 		Server,
 		DatabaseCompatibilityLevel,
 		DatabaseCollation,
+		CASE 
+			WHEN CHARINDEX('_BIN_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_BIN2_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CS_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CI_', DatabaseCollation) > 0 THEN 0
+			ELSE NULL END AS DatabaseIsCaseSensitive,
 		DatabaseIsAutoCreateStatsOn,
 		DatabaseIsAutoUpdateStatsOn,
 		DatabaseIsVOrderEnabled,
@@ -39,6 +45,7 @@ WITH Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
+		CEILING(DurationInMS / 1000.) AS BatchDurationInS,
 		Duration AS BatchDuration,
 		HasError,
 		HasWarning
@@ -52,6 +59,7 @@ Thread AS (
 		StartTime AS ThreadStartTime,
 		EndTime AS ThreadEndTime,
 		DurationInMS AS ThreadDurationInMS,
+		CEILING(DurationInMS / 1000.) AS ThreadDurationInS,
 		Duration AS ThreadDuration
 	FROM dbo.Thread
 ),
@@ -63,6 +71,7 @@ Iteration AS (
 		StartTime AS IterationStartTime,
 		EndTime AS IterationEndTime,
 		DurationInMS AS IterationDurationInMS,
+		CEILING(DurationInMS / 1000.) AS IterationDurationInS,
 		Duration AS IterationDuration
 	FROM dbo.Iteration
 ),
@@ -77,6 +86,7 @@ Query AS (
 		StartTime AS QueryStartTime,
 		EndTime AS QueryEndTime,
 		DurationInMS AS QueryDurationInMS,
+		CEILING(DurationInMS / 1000.) AS QueryDurationInS,
 		Duration AS QueryDuration,
 		DistributedStatementCount,
 		RetryCount,
@@ -90,21 +100,22 @@ Query AS (
 Statement AS (
 	SELECT
 		QueryID,
-		COUNT(StatementID) AS CountOfStatements,
-		COUNT(QueryInsightsSessionID) AS CountOfStatementsWithQueryInsights,
-		COUNT(CapacityMetricsCapacityUnitSeconds) AS CountOfStatementsWithCapacityMetrics,
+		COUNT(StatementID) AS StatementCount,
+		COUNT(QueryInsightsSessionID) AS StatementsWithQueryInsightsCount,
+		COUNT(CapacityMetricsCapacityUnitSeconds) AS StatementsWithCapacityMetricsCount,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), DistributedStatementID), ''), ', ') AS DistributedStatementID,
-		SUM(QueryInsightsDurationInMS) AS TotalQueryInsightsDurationInMS,
-		SUM(QueryInsightsAllocatedCPUTimeMS) AS TotalQueryInsightsAllocatedCPUTimeMS,
-		SUM(QueryInsightsDataScannedRemoteStorageMB) AS TotalQueryInsightsDataScannedRemoteStorageMB,
-		SUM(QueryInsightsDataScannedMemoryMB) AS TotalQueryInsightsDataScannedMemoryMB,
-		SUM(QueryInsightsDataScannedDiskMB) AS TotalQueryInsightsDataScannedDiskMB,
-		SUM(QueryInsightsRowCount) AS TotalQueryInsightsRowCount,
+		SUM(QueryInsightsDurationInMS) AS QueryInsightsDurationInMS,
+		CEILING(SUM(QueryInsightsDurationInMS) / 1000.) AS QueryInsightsDurationInS,
+		SUM(QueryInsightsAllocatedCPUTimeMS) AS QueryInsightsAllocatedCPUTimeMS,
+		SUM(QueryInsightsDataScannedRemoteStorageMB) AS QueryInsightsDataScannedRemoteStorageMB,
+		SUM(QueryInsightsDataScannedMemoryMB) AS QueryInsightsDataScannedMemoryMB,
+		SUM(QueryInsightsDataScannedDiskMB) AS QueryInsightsDataScannedDiskMB,
+		SUM(QueryInsightsRowCount) AS QueryInsightsRowCount,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsStatus), ''), ', ') AS QueryInsightsStatus,
 		STRING_AGG(NULLIF(CONVERT(NVARCHAR(MAX), QueryInsightsLabel), ''), ', ') AS QueryInsightsLabel,
-		SUM(CapacityMetricsCapacityUnitSeconds) AS TotalCapacityMetricsCapacityUnitSeconds,
-		SUM(CapacityMetricsOperationCost) AS TotalCapacityMetricsOperationCost,
-		SUM(CapacityMetricsDurationInSeconds) AS TotalCapacityMetricsDurationInSeconds,
+		SUM(CapacityMetricsCapacityUnitSeconds) AS CapacityMetricsCapacityUnitSeconds,
+		SUM(CapacityMetricsOperationCost) AS CapacityMetricsOperationCost,
+		SUM(CapacityMetricsDurationInSeconds) AS CapacityMetricsDurationInSeconds,
 		CONCAT('SELECT * FROM dbo.vwAllDetails WHERE QueryID = ''', QueryID, '''') AS StatementDetail
 	FROM dbo.Statement
 	GROUP BY
@@ -132,6 +143,7 @@ SELECT
 	b.Server,
 	b.DatabaseCompatibilityLevel,
 	b.DatabaseCollation,
+	b.DatabaseIsCaseSensitive,
 	b.DatabaseIsAutoCreateStatsOn,
 	b.DatabaseIsAutoUpdateStatsOn,
 	b.DatabaseIsVOrderEnabled,
@@ -149,6 +161,7 @@ SELECT
 	b.BatchStartTime,
 	b.BatchEndTime,
 	b.BatchDurationInMS,
+	b.BatchDurationInS,
 	b.BatchDuration,
 	b.HasError AS BatchHasError,
 	b.HasWarning AS BatchHasWarning,
@@ -159,6 +172,7 @@ SELECT
 	t.ThreadStartTime,
 	t.ThreadEndTime,
 	t.ThreadDurationInMS,
+	t.ThreadDurationInS,
 	t.ThreadDuration,
 
 	-- Iteration
@@ -167,6 +181,7 @@ SELECT
 	i.IterationStartTime,
 	i.IterationEndTime,
 	i.IterationDurationInMS,
+	i.IterationDurationInS,
 	i.IterationDuration,
 
 	-- Query
@@ -178,6 +193,7 @@ SELECT
 	q.QueryStartTime,
 	q.QueryEndTime,
 	q.QueryDurationInMS,
+	q.QueryDurationInS,
 	q.QueryDuration,
 	q.DistributedStatementCount,
 	q.RetryCount,
@@ -189,21 +205,22 @@ SELECT
 
 	-- Statement
 	CONCAT('SELECT * FROM dbo.vwStatement WHERE BatchID = ''', b.BatchID, '''') AS StatementDetail,
-	s.CountOfStatements,
-	s.CountOfStatementsWithQueryInsights,
-	s.CountOfStatementsWithCapacityMetrics,
+	s.StatementCount,
+	s.StatementsWithQueryInsightsCount,
+	s.StatementsWithCapacityMetricsCount,
 	s.DistributedStatementID,
-	s.TotalQueryInsightsDurationInMS,
-	s.TotalQueryInsightsAllocatedCPUTimeMS,
-	s.TotalQueryInsightsDataScannedRemoteStorageMB,
-	s.TotalQueryInsightsDataScannedMemoryMB,
-	s.TotalQueryInsightsDataScannedDiskMB,
-	s.TotalQueryInsightsRowCount,
+	s.QueryInsightsDurationInMS,
+	s.QueryInsightsDurationInS,
+	s.QueryInsightsAllocatedCPUTimeMS,
+	s.QueryInsightsDataScannedRemoteStorageMB,
+	s.QueryInsightsDataScannedMemoryMB,
+	s.QueryInsightsDataScannedDiskMB,
+	s.QueryInsightsRowCount,
 	s.QueryInsightsStatus,
 	s.QueryInsightsLabel,
-	s.TotalCapacityMetricsCapacityUnitSeconds,
-	s.TotalCapacityMetricsOperationCost,
-	s.TotalCapacityMetricsDurationInSeconds
+	s.CapacityMetricsCapacityUnitSeconds,
+	s.CapacityMetricsOperationCost,
+	s.CapacityMetricsDurationInSeconds
 FROM Batch AS b
 LEFT JOIN Thread AS t
 	ON b.BatchID = t.BatchID

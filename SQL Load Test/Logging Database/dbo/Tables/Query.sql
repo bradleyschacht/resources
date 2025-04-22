@@ -26,6 +26,9 @@ CREATE TABLE [dbo].[Query] (
 )
 GO
 
+CREATE CLUSTERED INDEX [ci_dbo_Query_BatchID_IterationID_QueryID] ON [dbo].[Query] ([BatchID], [IterationID], [QueryID])
+GO
+
 /*
 [QueryResults]   NVARCHAR (MAX) NULL,
 [QueryCustomLog] NVARCHAR (MAX) NULL,

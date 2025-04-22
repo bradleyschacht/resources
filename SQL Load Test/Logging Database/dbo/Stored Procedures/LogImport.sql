@@ -22,7 +22,7 @@ BEGIN
 	)
 
 	/* Batch */
-	DELETE FROM dbo.Batch WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Batch')
+	DELETE FROM dbo.Batch WHERE BatchID = @BatchID
 
 	INSERT INTO dbo.Batch
 	SELECT
@@ -83,7 +83,7 @@ BEGIN
 		LogType = 'Log'
 
 	/* Thread */
-	DELETE FROM dbo.Thread WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Thread')
+	DELETE FROM dbo.Thread WHERE BatchID = @BatchID
 
 	INSERT INTO dbo.Thread
 	SELECT
@@ -100,7 +100,7 @@ BEGIN
 	WHERE LogType = 'Thread'
 
 	/* Iteration */
-	DELETE FROM dbo.Iteration WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Iteration')
+	DELETE FROM dbo.Iteration WHERE BatchID = @BatchID
 
 	INSERT INTO dbo.Iteration
 	SELECT
@@ -118,7 +118,7 @@ BEGIN
 	WHERE LogType = 'Iteration'
 
 	/* Query */
-	DELETE FROM dbo.Query WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Query')
+	DELETE FROM dbo.Query WHERE BatchID = @BatchID
 
 	INSERT INTO dbo.Query
 	SELECT
@@ -147,7 +147,7 @@ BEGIN
 	WHERE LogType = 'Query'
 
 	/* Statement */
-	DELETE FROM dbo.Statement WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'Statement')
+	DELETE FROM dbo.Statement WHERE BatchID = @BatchID
 
 	;WITH StatementLog AS (
 		SELECT
@@ -236,7 +236,7 @@ BEGIN
 		ON SL.StatementID = CM.StatementID
 
 	/* Query Error */
-	DELETE FROM dbo.QueryError WHERE BatchID IN (SELECT JSON_VALUE(LogContent, '$.BatchID') FROM dbo.LogImport WHERE LogType = 'QueryError')
+	DELETE FROM dbo.QueryError WHERE BatchID = @BatchID
 
 	INSERT INTO dbo.QueryError
 	SELECT

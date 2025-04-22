@@ -15,6 +15,9 @@ CREATE TABLE [dbo].[Iteration] (
 )
 GO
 
+CREATE CLUSTERED INDEX [ci_dbo_Iteration_BatchID_IterationID] ON [dbo].[Iteration] ([BatchID], [IterationID])
+GO
+
 /*
 [Status]         NVARCHAR (20) NULL,
 [CountOfQueries] INT            NULL,

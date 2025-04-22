@@ -22,6 +22,12 @@ WITH Batch AS (
 		Server,
 		DatabaseCompatibilityLevel,
 		DatabaseCollation,
+		CASE 
+			WHEN CHARINDEX('_BIN_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_BIN2_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CS_', DatabaseCollation) > 0 THEN 1
+			WHEN CHARINDEX('_CI_', DatabaseCollation) > 0 THEN 0
+			ELSE NULL END AS DatabaseIsCaseSensitive,
 		DatabaseIsAutoCreateStatsOn,
 		DatabaseIsAutoUpdateStatsOn,
 		DatabaseIsVOrderEnabled,
@@ -39,6 +45,7 @@ WITH Batch AS (
 		StartTime AS BatchStartTime,
 		EndTime AS BatchEndTime,
 		DurationInMS AS BatchDurationInMS,
+		CEILING(DurationInMS / 1000.) AS BatchDurationInS,
 		Duration AS BatchDuration,
 		HasError,
 		HasWarning
@@ -52,6 +59,7 @@ Thread AS (
 		StartTime AS ThreadStartTime,
 		EndTime AS ThreadEndTime,
 		DurationInMS AS ThreadDurationInMS,
+		CEILING(DurationInMS / 1000.) AS ThreadDurationInS,
 		Duration AS ThreadDuration
 	FROM dbo.Thread
 ),
@@ -63,6 +71,7 @@ Iteration AS (
 		StartTime AS IterationStartTime,
 		EndTime AS IterationEndTime,
 		DurationInMS AS IterationDurationInMS,
+		CEILING(DurationInMS / 1000.) AS IterationDurationInS,
 		Duration AS IterationDuration
 	FROM dbo.Iteration
 ),
@@ -77,6 +86,7 @@ Query AS (
 		StartTime AS QueryStartTime,
 		EndTime AS QueryEndTime,
 		DurationInMS AS QueryDurationInMS,
+		CEILING(DurationInMS / 1000.) AS QueryDurationInS,
 		Duration AS QueryDuration,
 		DistributedStatementCount,
 		RetryCount,
@@ -101,6 +111,7 @@ Statement AS (
 		QueryInsightsStartTime,
 		QueryInsightsEndTime,
 		QueryInsightsDurationInMS,
+		CEILING(QueryInsightsDurationInMS / 1000.) AS QueryInsightsDurationInS,
 		QueryInsightsAllocatedCPUTimeMS,
 		QueryInsightsDataScannedRemoteStorageMB,
 		QueryInsightsDataScannedMemoryMB,
@@ -139,6 +150,7 @@ SELECT
 	b.Server,
 	b.DatabaseCompatibilityLevel,
 	b.DatabaseCollation,
+	b.DatabaseIsCaseSensitive,
 	b.DatabaseIsAutoCreateStatsOn,
 	b.DatabaseIsAutoUpdateStatsOn,
 	b.DatabaseIsVOrderEnabled,
@@ -156,6 +168,7 @@ SELECT
 	b.BatchStartTime,
 	b.BatchEndTime,
 	b.BatchDurationInMS,
+	b.BatchDurationInS,
 	b.BatchDuration,
 	b.HasError AS BatchHasError,
 	b.HasWarning AS BatchHasWarning,
@@ -166,6 +179,7 @@ SELECT
 	t.ThreadStartTime,
 	t.ThreadEndTime,
 	t.ThreadDurationInMS,
+	t.ThreadDurationInS,
 	t.ThreadDuration,
 
 	-- Iteration
@@ -174,6 +188,7 @@ SELECT
 	i.IterationStartTime,
 	i.IterationEndTime,
 	i.IterationDurationInMS,
+	i.IterationDurationInS,
 	i.IterationDuration,
 
 	-- Query
@@ -185,6 +200,7 @@ SELECT
 	q.QueryStartTime,
 	q.QueryEndTime,
 	q.QueryDurationInMS,
+	q.QueryDurationInS,
 	q.QueryDuration,
 	q.DistributedStatementCount,
 	q.RetryCount,
@@ -206,6 +222,7 @@ SELECT
 	s.QueryInsightsStartTime,
 	s.QueryInsightsEndTime,
 	s.QueryInsightsDurationInMS,
+	s.QueryInsightsDurationInS,
 	s.QueryInsightsAllocatedCPUTimeMS,
 	s.QueryInsightsDataScannedRemoteStorageMB,
 	s.QueryInsightsDataScannedMemoryMB,
