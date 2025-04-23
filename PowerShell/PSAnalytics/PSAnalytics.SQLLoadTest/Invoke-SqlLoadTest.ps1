@@ -237,7 +237,8 @@ function Invoke-SqlLoadTest {
                 $Server     = $Warehouse.connectionString
             }
             else {
-                "Unknown item type."
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Error" -MessageText ("Item type could not be determined.")
+                $RunBatch = $false
             }
         }
         catch {
