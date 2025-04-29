@@ -88,6 +88,9 @@ Query AS (
 		SUM(RetryCount) AS RetryCount,
 		SUM(ResultsRecordCount) AS ResultsRecordCount,
 		CASE WHEN SUM(CONVERT(INT, HasError)) > 0 THEN 1 ELSE 0 END AS HasError
+		
+		,SUM(CASE WHEN Status IN ('Unknown Status', 'Failure') THEN 1 ELSE 0 END) AS QueryFailures
+		,SUM(CASE WHEN Status NOT IN ('Success', 'Success after retry') THEN 1 ELSE 0 END) AS QuerySuccessAfterRetry
 	FROM dbo.Query
 	GROUP BY BatchID
 ),
@@ -117,6 +120,40 @@ Statement AS (
 
 SELECT
 	ROW_NUMBER() OVER(ORDER BY sst.ScenarioStartTime, b.BatchStartTime) AS SortOrder,
+
+	CASE
+		WHEN b.HasError = 1 THEN 'Red'
+		WHEN b.HasWarning = 1 OR StatementCount != StatementsWithQueryInsightsCount OR StatementCount != StatementsWithCapacityMetricsCount OR RetryCount > 0 THEN 'Yellow'
+		WHEN b.HasError = 0 AND b.HasWarning = 0 AND StatementCount =StatementsWithQueryInsightsCount AND StatementCount = StatementsWithCapacityMetricsCount AND RetryCount = 0 THEN 'Green'
+		ELSE 'Unknown'
+		END AS BatchQuality,
+	CASE
+		WHEN b.HasError = 1 THEN 'Red'
+		WHEN q.QueryFailures > 0 THEN 'Red'
+		WHEN q.QuerySuccessAfterRetry > 0 THEN 'Yellow'
+		WHEN q.RetryCount > 0 THEN 'Yellow'
+		ELSE 'Green'
+		END AS QueryExecutionQuality,
+	CASE
+		WHEN b.HasError = 1 THEN 'Red'
+		WHEN q.QueryFailures > 0 THEN 'Red'
+		WHEN StatementCount != StatementsWithQueryInsightsCount THEN 'Yellow'
+		ELSE 'Green'
+		END AS QueryInsightsQuality,
+	CASE
+		WHEN b.HasError = 1 THEN 'Red'
+		WHEN q.QueryFailures > 0 THEN 'Red'
+		WHEN StatementCount != StatementsWithCapacityMetricsCount THEN 'Yellow'
+		ELSE 'Green'
+		END AS CapacityMetricsQuality,
+	CONCAT(
+		'|' + CASE WHEN b.HasError = 1 THEN 'Batch has errors' ELSE NULL END + '|',
+		'|' + CASE WHEN b.HasWarning = 1 THEN 'Batch has warnings' ELSE NULL END + '|',
+		'|' + CASE WHEN RetryCount > 0 THEN CONCAT('Query retry count: ', RetryCount) ELSE NULL END + '|',
+		'|' + CASE WHEN StatementCount != StatementsWithQueryInsightsCount OR StatementCount IS NULL OR StatementsWithQueryInsightsCount IS NULL THEN 'Query insights data may be incomplete' ELSE NULL END + '|',
+		'|' + CASE WHEN StatementCount != StatementsWithCapacityMetricsCount OR StatementCount IS NULL OR StatementsWithCapacityMetricsCount IS NULL THEN 'Capacity metrics data may be incomplete' ELSE NULL END + '|',
+		CASE WHEN b.HasError = 0 AND b.HasWarning = 0 AND StatementCount = StatementsWithQueryInsightsCount AND StatementCount = StatementsWithCapacityMetricsCount THEN '' ELSE NULL END
+	) AS QualityDescription,
 
 	-- Batch
 	b.ScenarioID,

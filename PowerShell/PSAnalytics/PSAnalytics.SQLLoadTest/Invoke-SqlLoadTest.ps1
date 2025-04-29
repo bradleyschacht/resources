@@ -386,14 +386,6 @@ function Invoke-SqlLoadTest {
                 $ThreadID = (New-Guid).ToString()
                 $ThreadStartTime = Get-Date
 
-                # Add the message to the log.
-                $LocalLogThread[$ThreadID] = @{
-                    "ThreadID"      = $ThreadID
-                    "BatchID"       = $BatchID
-                    "Thread"        = $Thread
-                    "StartTime"     = $ThreadStartTime
-                }
-
                 # Create the local log variable references for the synchronized hashtables.
                 $LocalThreadStatus = $using:ThreadStatus
                 $LocalLog = $using:Log
@@ -403,6 +395,14 @@ function Invoke-SqlLoadTest {
                 $LocalLogQueryError = $using:LogQueryError
                 $LocalLogQueryResult = $using:LogQueryResult
                 $LocalLogStatement = $using:LogStatement
+
+                # Add the message to the log.
+                $LocalLogThread[$ThreadID] = @{
+                    "ThreadID"      = $ThreadID
+                    "BatchID"       = $BatchID
+                    "Thread"        = $Thread
+                    "StartTime"     = $ThreadStartTime
+                }
 
                 Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has started." -f $Thread, $ThreadCount)
 
