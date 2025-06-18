@@ -34,15 +34,19 @@ foreach ($Workspace in $WorkspaceList) {
             }
         }
         catch {
-            if(($_.ErrorDetails.Message | ConvertFrom-Json).errorCode -eq "InsufficientWorkspaceRole") {
-                Write-Host "Permission Denied" -ForegroundColor Red
-            }
-            else {
-                $_
-            }
+            # $_.Exception.Message
+            # if(($_.ErrorDetails.StatusCode | ConvertFrom-Json).errorCode -eq "InsufficientWorkspaceRole") {
+            #     Write-Host "Permission Denied" -ForegroundColor Red
+            # }            
+            # if(($_.ErrorDetails.Message | ConvertFrom-Json).errorCode -eq "InsufficientWorkspaceRole") {
+            #     Write-Host "Permission Denied" -ForegroundColor Red
+            # }
+            # else {
+            #     $_
+            # }
         }
 }
 
 
 
-(Invoke-FabricRestMethod -Uri $Uri -Method GET).value | Where-Object{$_.role -eq "Admin"} | ConvertTo-JSON -Depth 3
+# (Invoke-FabricRestMethod -Uri $Uri -Method GET).value | Where-Object{$_.role -eq "Admin"} | ConvertTo-JSON -Depth 3

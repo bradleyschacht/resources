@@ -1,4 +1,4 @@
-function Invoke-SqlLoadTestV2 {
+function Invoke-SqlLoadTest {
     param (
         # Optional Scenario Details
         [Parameter(Mandatory=$false)] [string]$ScenarioID,
@@ -183,36 +183,25 @@ function Invoke-SqlLoadTestV2 {
             
             # Get the capacity's current state and SKU.
             Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity SKU and status.")
-            $CapacityCurrent = Get-FabricCapacity -Capacity $CapacityName
+            $CapacityCurrent = Get-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -Capacity $CapacityName
             
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current state: {0}" -f $CapacityCurrent.state)
-            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current SKU: {0}" -f $CapacityCurrent.sku)
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current state: {0}" -f $CapacityCurrent.properties.state)
+            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity current SKU: {0}" -f $CapacityCurrent.sku.name)
             Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity expected SKU: {0}" -f $CapacitySize)
 
             # Check if the current vs. expected SKUs match. If they don't, scale the capacity.
-            if ($CapacityCurrent.sku -ne $CapacitySize) {
+            if ($CapacityCurrent.sku.name -ne $CapacitySize) {
                 Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Capacity SKUs do not match.")
                 
                 # Pause the capacity if it is running so that the current activity is cleared.
-                if (($CapacityCurrent.state -ne "Paused") -and ($true -eq $PauseOnCapacitySkuChange)) {
-                    if ($CapacityCurrent.sku -eq "FT1") {
-                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Fabric trials cannot be paused.")    
-                    }
-                    else {
-                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Pausing the capacity before scaling.")
-                        $null = Suspend-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
-                    }
+                if (($CapacityCurrent.properties.state -ne "Paused") -and ($true -eq $PauseOnCapacitySkuChange)) {
+                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Pausing the capacity before scaling.")
+                    $null = Suspend-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName                
                 }
 
                 # Scale the capacity to the proper SKU.
-                if ($CapacityCurrent.sku -eq "FT1") {
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Fabric trials cannot be scaled.")    
-                }
-                else {
-                    Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Initiating a scale operation.")
-                    $null = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
-                    $CapacityCurrent = Get-FabricCapacity -Capacity $CapacityName
-                }
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Initiating a scale operation.")
+                $CapacityCurrent = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
                 
                 # Wait for x seconds after a SKU change.
                 Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minutes after a scaling operation." -f $WaitTimeInMinutesAfterCapacitySkuChange)
@@ -220,7 +209,7 @@ function Invoke-SqlLoadTestV2 {
             }
 
             # Resume the capacity if it is not running.
-            if ($CapacityCurrent.state -ne "Active") {
+            if ($CapacityCurrent.properties.state -ne "Active") {
                 # Start the capacity.
                 Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The capacity is paused. Resuming the capacity.")
                 $null = Resume-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
@@ -397,14 +386,6 @@ function Invoke-SqlLoadTestV2 {
                 $ThreadID = (New-Guid).ToString()
                 $ThreadStartTime = Get-Date
 
-                # Add the message to the log.
-                $LocalLogThread[$ThreadID] = @{
-                    "ThreadID"      = $ThreadID
-                    "BatchID"       = $BatchID
-                    "Thread"        = $Thread
-                    "StartTime"     = $ThreadStartTime
-                }
-
                 # Create the local log variable references for the synchronized hashtables.
                 $LocalThreadStatus = $using:ThreadStatus
                 $LocalLog = $using:Log
@@ -414,6 +395,14 @@ function Invoke-SqlLoadTestV2 {
                 $LocalLogQueryError = $using:LogQueryError
                 $LocalLogQueryResult = $using:LogQueryResult
                 $LocalLogStatement = $using:LogStatement
+
+                # Add the message to the log.
+                $LocalLogThread[$ThreadID] = @{
+                    "ThreadID"      = $ThreadID
+                    "BatchID"       = $BatchID
+                    "Thread"        = $Thread
+                    "StartTime"     = $ThreadStartTime
+                }
 
                 Add-LogEntry -Thread $Thread -Iteration $null -MessageType "Information" -MessageText ("Thread {0} of {1} has started." -f $Thread, $ThreadCount)
 

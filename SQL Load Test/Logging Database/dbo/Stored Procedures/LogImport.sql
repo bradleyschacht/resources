@@ -61,8 +61,8 @@ BEGIN
 		JSON_VALUE(LogContent, '$.EndTime') AS EndTime,
 		JSON_VALUE(LogContent, '$.DurationInMS') AS DurationInMS,
 		JSON_VALUE(LogContent, '$.Duration') AS Duration,
-		JSON_VALUE(LogContent, '$.HasError') AS DurationInMS,
-		JSON_VALUE(LogContent, '$.HasWarning') AS DurationInMS,
+		JSON_VALUE(LogContent, '$.HasError') AS HasError,
+		JSON_VALUE(LogContent, '$.HasWarning') AS HasWarning,
 		GETDATE() AS CreateTime,
 		GETDATE() AS LastUpdateTime
 	FROM dbo.LogImport
@@ -71,7 +71,7 @@ BEGIN
 	/* Log */
 	DELETE FROM dbo.BatchLog WHERE BatchID = @BatchID
 
-	IF EXISTS (SELECT TOP 1 LogContent FROM dbo.LogImport WHERE LogType = 'Log' AND JSON_VALUE(LogContent, '$.MessageType') IN ('Error', 'Warning'))
+	IF EXISTS (SELECT TOP 1 LogContent FROM dbo.LogImport WHERE LogType = 'Batch' AND (JSON_VALUE(LogContent, '$.HasError') = 'true' OR JSON_VALUE(LogContent, '$.HasWarning') = 'true'))
 	INSERT INTO dbo.BatchLog
 	SELECT
 		@BatchID AS BatchID,
