@@ -807,7 +807,7 @@ function Invoke-SqlLoadTest {
     
             # Look at capacity metrics gather the usage details.
             do {
-                $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDListCapacityMetrics -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {'{0:F6}' -f ([Math]::Round(($CapacityUnitPricePerHour / 60 / 60 * $_.CapacityUnitSeconds), 6))}}
+                $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {'{0:F6}' -f ([Math]::Round(($CapacityUnitPricePerHour / 60 / 60 * $_.CapacityUnitSeconds), 6))}}
     
                 Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementCount, $CapacityMetrics.Count)
     
