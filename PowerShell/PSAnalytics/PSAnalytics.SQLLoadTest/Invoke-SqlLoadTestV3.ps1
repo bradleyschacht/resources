@@ -1,4 +1,4 @@
-function Invoke-SqlLoadTest {
+function Invoke-SqlLoadTestV3 {
     param (
         # Platform, Logs, and Queries
         [Parameter(Mandatory = $false)] [ValidateSet("Fabric")] [string] $Platform = "Fabric",
@@ -30,12 +30,13 @@ function Invoke-SqlLoadTest {
         [Parameter(Mandatory = $false)] [string]  $CapacityResourceGroupName,
         [Parameter(Mandatory = $false)] [string]  $CapacityName,
         [Parameter(Mandatory = $false)] [string]  $CapacitySize,
-        [Parameter(Mandatory = $false)] [string]  $CapacityMetricsWorkspace,
-        [Parameter(Mandatory = $false)] [string]  $CapacityMetricsSemanticModelName,
+        [Parameter(Mandatory = $false)] [string]  $CapacityMetricsEventhouseUri,
+        [Parameter(Mandatory = $false)] [string]  $CapacityMetricsDatabase,
         [Parameter(Mandatory = $false)] [boolean] $CollectQueryInsights                      = $false,  <#  Default: $true   #>
         [Parameter(Mandatory = $false)] [boolean] $CollectCapacityMetrics                    = $false,  <#  Default: $true   #>
         [Parameter(Mandatory = $false)] [boolean] $PauseOnCapacitySkuChange                  = $false,  <#  Default: $false  #>
-        [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesAfterCapacityResume      = 1,       <#  Default: 1 minute #>
+        [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesAfterCapacityChange      = 5,       <#  Default: 5 minutes #>
+        [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesAfterCapacityResume      = 1,       <#  Default: 1 minute  #>
         [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesAfterCapacitySkuChange   = 5,       <#  Default: 5 minutes #>
         [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesForQueryInsightsData     = 20,      <#  Default: 20  minutes  #>
         [Parameter(Mandatory = $false)] [int32]   $WaitTimeInMinutesForCapacityMetricsData   = 20,      <#  Default: 20  minutes  #>
@@ -162,12 +163,12 @@ function Invoke-SqlLoadTest {
             
             # Check to be sure the proper Capacity Metrics parameter combination was passed.
             if ($true -eq $CollectCapacityMetrics) {
-                if ($false -eq [string]::IsNullOrEmpty($CapacityMetricsWorkspace) -and $false -eq [string]::IsNullOrEmpty($CapacityMetricsSemanticModelName)) {
+                if ($false -eq [string]::IsNullOrEmpty($CapacityMetricsEventhouseUri) -and $false -eq [string]::IsNullOrEmpty($CapacityMetricsDatabase)) {
                     # Continue running the script.
                 }
                 else {
                     Write-Host "No value was provided for the Capacity Metrics parameters." -ForegroundColor Red
-                    Write-Host "When `$CollectCapacityMetrics is set to `$true a value must be provided for the CapacityMetricsWorkspace and CapacityMetricsSemanticModelName parameters. The batch will not be run." -ForegroundColor Red
+                    Write-Host "When `$CollectCapacityMetrics is set to `$true a value must be provided for the CapacityMetricsEventhouseUri and CapacityMetricsDatabase parameters. The batch will not be run." -ForegroundColor Red
                     $RunBatch = $false
                 }
             }
@@ -224,8 +225,15 @@ function Invoke-SqlLoadTest {
                 if ($true -eq $RunBatch) {
                     try {
                         # Assign the correct capacity for this batch to the workspace.
-                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Assigning capacity to the workspace.")
-                        $null = Set-FabricWorkspaceCapacity -Workspace $WorkspaceID -Capacity $CapacityID
+                        Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity assigned to the workspace.")
+                        if (((Get-FabricWorkspace -Workspace $WorkspaceID).capacityId) -ne $CapacityID) {
+                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Assigning capacity to the workspace.")
+                            $null = Set-FabricWorkspaceCapacity -Workspace $WorkspaceID -Capacity $CapacityID
+
+                            # Wait for x seconds after a capacity change.
+                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minute(s) after a capacity change operation." -f $WaitTimeInMinutesAfterCapacityChange)
+                            Start-Sleep -Seconds ($WaitTimeInMinutesAfterCapacityChange * 60)
+                        }
                         
                         # Get the capacity's current state and SKU.
                         Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Checking capacity SKU and status.")
@@ -250,7 +258,7 @@ function Invoke-SqlLoadTest {
                             $CapacityCurrent = Set-FabricAzCapacitySku -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName -Sku $CapacitySize
                             
                             # Wait for x seconds after a SKU change.
-                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minutes after a scaling operation." -f $WaitTimeInMinutesAfterCapacitySkuChange)
+                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minute(s) after a scaling operation." -f $WaitTimeInMinutesAfterCapacitySkuChange)
                             Start-Sleep -Seconds ($WaitTimeInMinutesAfterCapacitySkuChange * 60)
                         }
 
@@ -261,7 +269,7 @@ function Invoke-SqlLoadTest {
                             $null = Resume-FabricAzCapacity -SubscriptionID $CapacitySubscriptionID -ResourceGroupName $CapacityResourceGroupName -CapacityName $CapacityName
                             
                             # Wait for x seconds after the capacity becomes active.
-                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minutes after a capacity resume operation." -f $WaitTimeInMinutesAfterCapacityResume)
+                            Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting {0} minute(s) after a capacity resume operation." -f $WaitTimeInMinutesAfterCapacityResume)
                             Start-Sleep -Seconds ($WaitTimeInMinutesAfterCapacityResume * 60)
                         }
 
@@ -807,16 +815,16 @@ function Invoke-SqlLoadTest {
     
             # Look at capacity metrics gather the usage details.
             do {
-                $CapacityMetrics = Get-FabricCapacityMetrics -CapacityMetricsWorkspace $CapacityMetricsWorkspace -CapacityMetricsSemanticModelName $CapacityMetricsSemanticModelName -Capacity $CapacityID -OperationIdList $DistributedStatementIDList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") | Select-Object *, @{Name = "OperationCost"; Expression = {'{0:F6}' -f ([Math]::Round(($CapacityUnitPricePerHour / 60 / 60 * $_.CapacityUnitSeconds), 6))}}
+                $CapacityMetrics = Get-FabricCapacityMetricsV2 -CapacityMetricsEventhouseUri $CapacityMetricsEventhouseUri -CapacityMetricsDatabase $CapacityMetricsDatabase -Capacity $CapacityID -OperationIdList $DistributedStatementIDList -Date ([datetime]$BatchStartTime).ToString("yyyy-MM-dd 00:00:00") -CUPricePerHour $CapacityUnitPricePerHour
     
-                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0} and the current number is {1}." -f $DistributedStatementCount, $CapacityMetrics.Count)
+                Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("The expected number of distributed statement ids in capacity metrics is {0}. Total Found: {1} | Complete Data: {2} | Incomplete Data: {3}" -f $DistributedStatementCount, $CapacityMetrics.Count, ($CapacityMetrics | Where-Object {$_.Status -in ("Success", "Failure")}).Count, ($CapacityMetrics | Where-Object {$_.Status -in ("In Progress")}).Count)
     
                 # If the query count has not been met and the time limit has not expired, wait for a minute and then check again.
-                if (($CapacityMetrics.Count -ne $DistributedStatementCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
+                if ((($CapacityMetrics | Where-Object {$_.Status -in ("Success", "Failure")}).Count -ne $DistributedStatementCount) -and ((Get-Date) -lt $WaitForJobsUntil)) {
                     Add-LogEntry -Thread $null -Iteration $null -MessageType "Information" -MessageText ("Waiting 60 seconds before checking capacity metrics again.")
                     Start-Sleep 60
                 }
-    
+
                 # If the time limit has expired, stop checking for new queries.
                 if ((Get-Date) -gt $WaitForJobsUntil) {
                     Add-LogEntry -Thread $null -Iteration $null -MessageType "Warning" -MessageText ("The batch completed more than {0} minutes ago and the queries have not appeared in capacity metrics. Therefore, capacity metrics data may be incomplete." -f $WaitTimeInMinutesForCapacityMetricsData)
@@ -824,7 +832,7 @@ function Invoke-SqlLoadTest {
                 }
             }
             while (
-                ($CapacityMetrics.Count -ne $DistributedStatementCount) -and ($true -eq $ContinueLoop)
+                (($CapacityMetrics | Where-Object {$_.Status -in ("Success", "Failure")}).Count -ne $DistributedStatementCount) -and ($true -eq $ContinueLoop)
             )
         }
     }
