@@ -1,0 +1,119 @@
+DROP TABLE IF EXISTS dbo.dim_date
+GO
+
+DECLARE @StartDate  DATE = '2020-01-01'
+DECLARE @EndDate    DATE = '2021-12-31'
+
+/*******************************************************************************************************************************************************/
+
+CREATE TABLE dbo.dim_date
+    (
+        [date_key]                  [INT]           NOT NULL,
+        [date]                      [DATE]          NOT NULL,
+        [standard_date]             [CHAR](10)      NOT NULL,
+        [day]                       [SMALLINT]      NOT NULL,
+        [day_number]                [VARCHAR](7)    NOT NULL, /*[CHAR](2) without unknown member*/
+        [day_name]                  [VARCHAR](7)    NOT NULL, /*[VARCHAR](4) without unknown member*/
+        [day_of_week]               [SMALLINT]      NOT NULL,
+        [day_of_week_name]          [VARCHAR](9)    NOT NULL,
+        [day_of_week_short_name]    [VARCHAR](7)    NOT NULL, /*[CHAR](3) without unknown member*/
+        [day_of_week_in_month]      [SMALLINT]      NOT NULL,
+        [day_of_year]               [SMALLINT]      NOT NULL,
+        [week_of_month]             [SMALLINT]      NOT NULL,
+        [week_of_year]              [SMALLINT]      NOT NULL,
+        [month]                     [SMALLINT]      NOT NULL,
+        [month_number]              [VARCHAR](7)    NOT NULL, /*[CHAR](2) without unknown member*/
+        [month_name]                [VARCHAR](9)    NOT NULL,
+        [month_short_name]          [VARCHAR](7)    NOT NULL, /*[CHAR](3) without unknown member*/
+        [quarter]                   [SMALLINT]      NOT NULL,
+        [quarter_name]              [VARCHAR](7)    NOT NULL,
+        [quarter_short_name]        [VARCHAR](7)    NOT NULL, /*[CHAR](3) without unknown member*/
+        [year]                      [SMALLINT]      NOT NULL,
+        [year_name]                 [VARCHAR](7)    NOT NULL, /*[CHAR](6) without unknown member*/
+        [month_year]                [CHAR](10)      NOT NULL,
+        [mmyyyy]                    [VARCHAR](7)    NOT NULL, /*[CHAR](6) without unknown member*/
+        [first_day_of_week]         [DATE]          NOT NULL,
+        [last_day_of_week]          [DATE]          NOT NULL,
+        [first_day_of_month]        [DATE]          NOT NULL,
+        [last_day_of_month]         [DATE]          NOT NULL,
+        [first_day_of_quarter]      [DATE]          NOT NULL,
+        [last_day_of_quarter]       [DATE]          NOT NULL,
+        [first_day_of_year]         [DATE]          NOT NULL,
+        [last_day_of_year]          [DATE]          NOT NULL
+    )
+
+INSERT INTO dbo.dim_date VALUES(19000101, '1900-01-01', '01/01/1900', 0, 'Unknown', 'Unknown', 0, 'Unknown', 'Unknown', 0, 0, 0, 0, 0, 'Unknown', 'Unknown', 'Unknown', 0, 'Unknown', 'Unknown', 1900, 'Unknown', 'Unknown', 'Unknown', '1900-01-01', '1900-01-01', '1900-01-01', '1900-01-01', '1900-01-01', '1900-01-01', '1900-01-01', '1900-01-01')
+
+INSERT INTO dbo.dim_date
+SELECT
+    /*  Date  */
+    CONVERT(VARCHAR, date_current, 112) AS date_key,
+    date_current AS [date],
+    FORMAT(date_current, 'MM/dd/yyyy') AS standard_date,
+    
+    /*  Day  */
+    DATEPART(DAY, date_current) AS [day],
+    FORMAT(date_current, 'dd') AS day_number,
+    CASE 
+        WHEN DATEPART(DAY, date_current) IN (1, 21, 31) THEN CONVERT(VARCHAR(2), DATEPART(DAY, date_current)) + 'st'
+        WHEN DATEPART(DAY, date_current) IN (2, 22)     THEN CONVERT(VARCHAR(2), DATEPART(DAY, date_current)) + 'nd'
+        WHEN DATEPART(DAY, date_current) IN (3, 23)     THEN CONVERT(VARCHAR(2), DATEPART(DAY, date_current)) + 'rd'
+        ELSE                                                CONVERT(VARCHAR(2), DATEPART(DAY, date_current)) + 'th'
+        END AS day_name,
+    DATEPART(WEEKDAY, date_current) AS day_of_week,
+    FORMAT(date_current, 'dddd') AS day_of_week_name,
+    FORMAT(date_current, 'ddd') AS day_of_week_short_name,
+    (DATEPART(DAY, date_current) + 6) / 7 AS day_of_week_in_month,
+    DATEPART(DAYOFYEAR, date_current) AS day_of_year,
+    
+    /*  Week  */
+    DATEPART(WEEK, date_current) + 1 - DATEPART(WEEK, CAST(DATEPART(MONTH, date_current) AS VARCHAR) + '/1/' + CAST(DATEPART(YEAR, date_current) AS VARCHAR)) AS week_of_month,
+    DATEPART(WEEK, date_current) AS week_of_year,
+
+    /*  Month  */
+    DATEPART(MONTH, date_current) AS [month],
+    FORMAT(date_current, 'MM') AS month_number,
+    FORMAT(date_current, 'MMMM') AS month_name,
+    FORMAT(date_current, 'MMM') AS month_short_name,
+
+    /*  Quarter  */
+    DATEPART(QUARTER, date_current) AS [quarter],
+    CASE DATEPART(QUARTER, date_current) 
+        WHEN 1 THEN 'First'
+        WHEN 2 THEN 'Second'
+        WHEN 3 THEN 'Third'
+        WHEN 4 THEN 'Fourth'
+        END AS quarter_name,
+    CASE DATEPART(QUARTER, date_current) 
+        WHEN 1 THEN '1st'
+        WHEN 2 THEN '2nd'
+        WHEN 3 THEN '3rd'
+        WHEN 4 THEN '4th'
+        END AS quarter_short_name,
+    
+    /*  Year  */
+    DATEPART(YEAR, date_current) AS [year],
+    'CY' + FORMAT(date_current, 'yyyy') AS year_name,
+    FORMAT(date_current, 'MMM-yyyy') AS month_year,
+    FORMAT(date_current, 'mmyyyy') AS mmyyyy,
+
+    /*  Period Begin and End Dates  */
+    DATEADD(WEEK, DATEDIFF(WEEK, 0, date_current), -1) AS first_day_of_week,
+    DATEADD(WEEK, DATEDIFF(WEEK, 0, date_current), 5) AS last_day_of_week,
+    DATETRUNC(MONTH, date_current) AS first_day_of_month,
+    EOMONTH(date_current) AS last_day_of_month,
+    DATETRUNC(QUARTER, date_current) AS first_day_of_quarter,
+    EOMONTH(DATEFROMPARTS(YEAR(date_current), 3 * DATEPART(QUARTER, date_current), 1)) AS last_day_of_quarter,
+    DATETRUNC(YEAR, date_current) AS first_day_of_year,
+    DATEFROMPARTS(YEAR(date_current), 12, 31) AS last_day_of_year
+FROM
+    (
+        SELECT
+            DATEADD(DAY, value, @StartDate) AS date_current
+        FROM GENERATE_SERIES(0, DATEDIFF(DAY, @StartDate, @EndDate), 1)
+    ) AS dates
+
+SELECT
+    *
+FROM dbo.dim_date
+ORDER BY date_key
